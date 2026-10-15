@@ -13,7 +13,7 @@
 
 const { requestChat, testConnection, listModels, resolveChatEndpoint } = require('./chat-client');
 const { createConversationStore } = require('./conversations');
-const { createChatWindow } = require('./chat-window');
+const { createChatWindow, getChatWindow } = require('./chat-window');
 
 /** 默认系统提示词 */
 const DEFAULT_SYSTEM_PROMPT =
@@ -25,6 +25,18 @@ const DEFAULT_CHATTER_PROMPT =
 
 /** 闲聊气泡最长字数 */
 const CHATTER_MAX_LENGTH = 80;
+
+/** 对话各阶段桌宠播放的动画（找不到的动画会被桌宠忽略） */
+const PET_ACTIVITY = {
+  waiting: { id: 'chat-waiting', loop: ['工作状态-思考冒泡'] },
+  reasoning: { id: 'chat-reasoning', loop: ['深度思考碎碎念'] },
+  typing: { id: 'chat-typing', loop: ['工作状态-忙碌点按', '写代码'] },
+  done: { id: 'chat-done', once: '工作状态-雀跃庆祝' },
+  error: { id: 'chat-error', once: '工作状态-垂头叹气冒汗' }
+};
+
+/** 回复同步到桌宠气泡时最多展示的字数 */
+const REPLY_PREVIEW_LENGTH = 60;
 
 /** requestId -> { cancel } */
 const pending = new Map();
@@ -71,6 +83,8 @@ function buildConfig(ctx, override) {
     temperature: merged.temperature,
     stream: merged.stream !== false,
     showThinking: merged.showThinking !== false,
+    petReact: merged.petReact !== false,
+    syncReply: merged.syncReply !== false,
     systemPrompt,
     chatterMinutes: Number(merged.chatterMinutes) || 0,
     chatterPrompt: String(merged.chatterPrompt || '').trim() || DEFAULT_CHATTER_PROMPT
@@ -87,6 +101,41 @@ async function withModel(config) {
   const model = models.find((m) => !/embed/i.test(m)) || models[0] || '';
   if (!model) throw new Error('本地模型服务上还没有可用模型，请先下载（如 ollama pull qwen2.5:7b）');
   return { ...config, model };
+}
+
+/** 让桌宠进入对话的某个阶段（关闭「桌宠跟随对话」时只负责收尾，不再触发新动画） */
+function petActivity(ctx, stage, config) {
+  const fn = ctx.host && ctx.host.setPetActivity;
+  if (typeof fn !== 'function') return;
+  if (!stage) { fn(null); return; }
+  if (config && config.petReact === false) return;
+  fn(PET_ACTIVITY[stage] || null);
+}
+
+/** 把回复整理成气泡里的一两句话（去掉代码块与 Markdown 记号） */
+function replyPreview(text) {
+  const plain = String(text || '')
+    .replace(/```[\s\S]*?```/g, ' [代码] ')
+    .replace(/[#>*`_~]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length > REPLY_PREVIEW_LENGTH ? `${plain.slice(0, REPLY_PREVIEW_LENGTH)}…` : plain;
+}
+
+/** 对话窗口不在眼前（没开 / 最小化 / 隐藏 / 没有焦点）时，把回复同步成桌宠气泡，点一下打开对话窗口 */
+function syncReplyToPet(ctx, config, content) {
+  if (!config.syncReply) return;
+  const win = getChatWindow();
+  const inFront = win && win.isVisible() && !win.isMinimized() && win.isFocused();
+  if (inFront) return;
+  const preview = replyPreview(content);
+  const fn = ctx.host && ctx.host.showPetBubble;
+  if (!preview || typeof fn !== 'function') return;
+  fn({
+    text: `💬 ${preview}\n（点我查看完整回复）`,
+    duration: Math.min(15000, 5000 + preview.length * 120),
+    onClick: () => createChatWindow(ctx)
+  });
 }
 
 /** 暴露给渲染进程的配置（不含 API Key 明文） */
@@ -360,14 +409,23 @@ async function handleSendMessage(ctx, payload) {
     ...((history && history.messages) || []).map((m) => ({ role: m.role, content: m.content }))
   ];
 
+  // 桌宠跟随对话：等待 → 思考 → 输出 → 完成 / 出错
+  let stage = 'waiting';
+  petActivity(ctx, stage, config);
   const handle = requestChat(config, messages, {
     stream: config.stream,
-    onChunk: (chunk, kind) => ctx.ipc.send('stream-chunk', { requestId, chunk, kind })
+    onChunk: (chunk, kind) => {
+      ctx.ipc.send('stream-chunk', { requestId, chunk, kind });
+      const next = kind === 'reasoning' ? 'reasoning' : 'typing';
+      if (next !== stage) { stage = next; petActivity(ctx, stage, config); }
+    }
   });
   pending.set(requestId, handle);
 
   try {
     const full = await handle.promise;
+    petActivity(ctx, 'done', config);
+    syncReplyToPet(ctx, config, full.content);
     const done = conversations.addMessage(conversation.id, {
       role: 'assistant',
       content: full.content.trim(),
@@ -382,8 +440,10 @@ async function handleSendMessage(ctx, payload) {
     });
   } catch (e) {
     if (e && e.canceled) {
+      petActivity(ctx, null);
       ctx.ipc.send('stream-done', { requestId, conversationId: conversation.id, canceled: true });
     } else {
+      petActivity(ctx, 'error', config);
       ctx.ipc.send('stream-error', {
         requestId,
         conversationId: conversation.id,
@@ -438,6 +498,7 @@ async function petTalk(ctx, options = {}) {
   if (options.manual) show('🤔 让我想想…', 15000);
   try {
     const config = await withModel(buildConfig(ctx, options.override));
+    petActivity(ctx, 'waiting', config);
     // 推理模型会先输出很长的思考过程，给足 token 余量
     const handle = requestChat({ ...config, maxTokens: 1024, temperature: 0.9 }, [
       { role: 'system', content: config.chatterPrompt },
@@ -454,6 +515,7 @@ async function petTalk(ctx, options = {}) {
     if (options.manual) show(`😵 ${error}`, 5000);
     return { success: false, error };
   } finally {
+    petActivity(ctx, null);
     pending.delete('pet-talk');
     chatterBusy = false;
   }

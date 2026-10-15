@@ -169,6 +169,15 @@ body {
   white-space: nowrap;
 }
 
+/* 可点击气泡（对话回复）：悬停高亮，提示可以点开 */
+#bubble-root.clickable {
+  cursor: pointer;
+}
+
+#bubble-root.clickable:hover .text-bubble {
+  filter: brightness(1.12);
+}
+
 /* 模型状态卡片：模型名可能很长，字号小一些并允许折行 */
 .balance-value.model-name {
   font-size: calc(17px * var(--s));

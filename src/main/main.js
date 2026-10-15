@@ -152,7 +152,19 @@ async function loadPlugins() {
         showPetBubble: (payload) => {
           const text = String((payload && payload.text) || '').trim();
           if (!text) return false;
-          return showBubble({ kind: 'text', text, duration: Number(payload.duration) || 4000 }).success;
+          return showBubble({
+            kind: 'text',
+            text,
+            duration: Number(payload.duration) || 4000,
+            onClick: typeof payload.onClick === 'function' ? payload.onClick : undefined
+          }).success;
+        },
+        // 让桌宠进入某个情景（循环播放指定动画 / 播一次反应动画），null 表示回到闲置
+        setPetActivity: (activity) => {
+          const pet = getPetWindow();
+          if (!pet || pet.isDestroyed()) return false;
+          pet.webContents.send('pet-activity', activity && typeof activity === 'object' ? activity : null);
+          return true;
         },
         // 打开本体的设置窗口
         openSettings: () => { createSettingsWindow(); return true; }

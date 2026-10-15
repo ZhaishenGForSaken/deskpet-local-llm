@@ -411,7 +411,17 @@ function createPluginManager(options = {}) {
             catch (e) { return null; }
           }
           : () => null,
-        /** 让桌宠弹出一个文字气泡（可选服务）：{ text, duration } */
+        /**
+         * 让桌宠进入某个情景（可选服务）
+         * { id, loop?: [动画名], once?: 动画名, ttl?: 毫秒 }；传 null 回到闲置
+         */
+        setPetActivity: typeof hostServices.setPetActivity === 'function'
+          ? (activity) => {
+            try { return hostServices.setPetActivity(activity) !== false; }
+            catch (e) { return false; }
+          }
+          : null,
+        /** 让桌宠弹出一个文字气泡（可选服务）：{ text, duration, onClick? }，传了 onClick 气泡可点击 */
         showPetBubble: typeof hostServices.showPetBubble === 'function'
           ? (payload) => {
             try { return hostServices.showPetBubble(payload) !== false; }

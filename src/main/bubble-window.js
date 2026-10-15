@@ -17,6 +17,8 @@ let bubbleWindow = null;
 let contentSize = { width: 280, height: 90 };
 /** 是否有待显示的内容（等尺寸回传后再显示，避免闪一下） */
 let pendingShow = false;
+/** 当前气泡被点击时的回调（只有插件传了 onClick 的气泡才可点击） */
+let clickHandler = null;
 
 const isMac = process.platform === 'darwin';
 
@@ -49,8 +51,9 @@ function createBubbleWindow() {
 
   bubbleWindow.setAlwaysOnTop(true, isMac ? 'screen-saver' : 'floating');
   bubbleWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // 完全鼠标穿透，气泡永远不会挡住点击 / 拖拽宠物
-  bubbleWindow.setIgnoreMouseEvents(true);
+  // 默认鼠标穿透，气泡不会挡住点击 / 拖拽宠物；
+  // forward 让渲染进程仍能收到 mousemove，可点击的气泡在鼠标悬停时才临时接收点击
+  bubbleWindow.setIgnoreMouseEvents(true, { forward: true });
 
   bubbleWindow.loadFile(path.join(__dirname, '..', 'renderer', 'bubble', 'bubble.html'));
 
@@ -94,7 +97,8 @@ function positionBubble() {
 
 /**
  * 显示气泡
- * @param {Object} payload { kind: 'text'|'status', text, data, duration }
+ * @param {Object} payload { kind: 'text'|'status', text, data, duration, onClick? }
+ *   onClick（仅主进程内可传）：气泡被点击时的回调，传了才可点击
  */
 function showBubble(payload) {
   // 宠物被隐藏时不弹气泡（例如托盘里点了「隐藏桌宠」）
@@ -105,12 +109,15 @@ function showBubble(payload) {
 
   const win = createBubbleWindow();
   const cfg = getBubbleConfig();
+  clickHandler = typeof payload.onClick === 'function' ? payload.onClick : null;
+  setBubbleInteractive(false);
   const message = {
     kind: payload.kind || 'text',
     text: payload.text || '',
     data: payload.data || null,
     duration: Number(payload.duration) || 2500,
-    scale: Number(cfg.scale) || 1
+    scale: Number(cfg.scale) || 1,
+    clickable: !!clickHandler
   };
 
   const dispatch = () => {
@@ -140,8 +147,27 @@ function showBubble(payload) {
 /** 隐藏气泡 */
 function hideBubble() {
   pendingShow = false;
+  clickHandler = null;
+  setBubbleInteractive(false);
   const win = getBubbleWindow();
   if (win && win.isVisible()) win.hide();
+}
+
+/** 鼠标悬停在可点击气泡上时接收点击，离开后恢复穿透 */
+function setBubbleInteractive(interactive) {
+  const win = getBubbleWindow();
+  if (!win) return;
+  const on = !!interactive && !!clickHandler;
+  win.setIgnoreMouseEvents(!on, { forward: true });
+}
+
+/** 气泡被点击：执行回调并收起气泡 */
+function clickBubble() {
+  const handler = clickHandler;
+  hideBubble();
+  if (handler) {
+    try { handler(); } catch (e) { console.warn('气泡点击回调异常:', e.message); }
+  }
 }
 
 /**
@@ -170,5 +196,7 @@ module.exports = {
   showBubble,
   hideBubble,
   positionBubble,
-  applyBubbleSize
+  applyBubbleSize,
+  setBubbleInteractive,
+  clickBubble
 };

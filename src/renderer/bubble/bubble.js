@@ -14,6 +14,18 @@ const elements = {
 };
 
 let hideTimer = null;
+let clickable = false;
+
+// 可点击气泡（例如「对话回复」）：悬停时才接收点击，平时依旧鼠标穿透
+elements.root.addEventListener('mouseenter', () => { if (clickable) window.bubbleAPI.setInteractive(true); });
+elements.root.addEventListener('mouseleave', () => { if (clickable) window.bubbleAPI.setInteractive(false); });
+elements.root.addEventListener('click', () => {
+  if (!clickable) return;
+  clickable = false;
+  if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  elements.root.classList.add('hidden');
+  window.bubbleAPI.click();
+});
 
 /** 字节数 -> 1.2 GB */
 function formatBytes(bytes) {
@@ -88,6 +100,8 @@ function reportSize() {
 window.bubbleAPI.onShow((payload) => {
   if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
 
+  clickable = !!payload.clickable;
+  elements.root.classList.toggle('clickable', clickable);
   const scale = Number(payload.scale) > 0 ? Number(payload.scale) : 1;
   document.documentElement.style.setProperty('--bubble-scale', String(scale));
 
@@ -104,6 +118,7 @@ window.bubbleAPI.onShow((payload) => {
     const duration = Number(payload.duration) || 2500;
     hideTimer = setTimeout(() => {
       hideTimer = null;
+      clickable = false;
       elements.root.classList.add('hidden');
       window.bubbleAPI.hide();
     }, duration);

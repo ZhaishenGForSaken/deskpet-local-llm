@@ -50,6 +50,10 @@ contextBridge.exposeInMainWorld('petAPI', {
     ipcRenderer.on('balance-config-changed', (event, config) => callback(config));
   },
   // 监听：手动触发模型状态展示（托盘菜单）
+  // 监听：插件让桌宠进入某个情景（对话中 / 出错 …）
+  onPetActivity: (callback) => {
+    ipcRenderer.on('pet-activity', (event, activity) => callback(activity));
+  },
   onShowBalance: (callback) => {
     ipcRenderer.on('show-balance', () => callback());
   },

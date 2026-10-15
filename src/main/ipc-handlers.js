@@ -21,7 +21,9 @@ const {
   togglePetWindow, setPetSize, setPetOpacity,
   getPetWindow, notifyGeometryChange
 } = require('./pet-window');
-const { showBubble, hideBubble, applyBubbleSize, createBubbleWindow } = require('./bubble-window');
+const {
+  showBubble, hideBubble, applyBubbleSize, createBubbleWindow, setBubbleInteractive, clickBubble
+} = require('./bubble-window');
 const {
   openMenuWindow, hideMenuWindow, applyMenuSize, sendMenuSelection
 } = require('./menu-window');
@@ -182,6 +184,9 @@ function registerIpcHandlers() {
   ipcMain.on('bubble-size', (event, size) => applyBubbleSize(size));
   // 气泡展示结束
   ipcMain.on('bubble-hide', () => hideBubble());
+  // 可点击气泡：悬停接收点击 / 被点击
+  ipcMain.on('bubble-interactive', (event, interactive) => setBubbleInteractive(!!interactive));
+  ipcMain.on('bubble-click', () => clickBubble());
 
   // 预览双击自定义语句（设置页使用，未保存也能看效果）
   ipcMain.handle('preview-phrase', (event, payload) => {
@@ -272,7 +277,8 @@ function registerIpcHandlers() {
  */
 function scanAnimationFiles() {
   const projectRoot = path.join(__dirname, '..', '..');
-  const result = { idle: [], click: [] };
+  // scene：情景动画（对话中、出错、吃饭、节日…），只由插件按情景触发，不参与随机闲置 / 点击
+  const result = { idle: [], click: [], scene: [] };
 
   const scanDirs = [
     { idle: path.join(projectRoot, 'assets', 'animations', 'idle'), click: path.join(projectRoot, 'assets', 'animations', 'click') },
@@ -298,9 +304,16 @@ function scanAnimationFiles() {
     }
   }
 
+  const sceneDir = path.join(projectRoot, 'assets', 'animations', 'scene');
+  if (fs.existsSync(sceneDir)) {
+    for (const f of fs.readdirSync(sceneDir).filter((name) => name.endsWith('.webm'))) {
+      result.scene.push({ name: f, path: path.relative(projectRoot, path.join(sceneDir, f)).replace(/\\/g, '/') });
+    }
+  }
+
   result.idle = deduplicateByName(result.idle);
   result.click = deduplicateByName(result.click);
-  console.log(`📁 扫描动画: ${result.idle.length} 个闲置, ${result.click.length} 个点击反应`);
+  console.log(`📁 扫描动画: ${result.idle.length} 个闲置, ${result.click.length} 个点击反应, ${result.scene.length} 个情景`);
   return result;
 }
 

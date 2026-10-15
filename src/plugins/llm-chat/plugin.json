@@ -80,6 +80,20 @@
           "hint": "推理模型的 <think> 内容会以可折叠区块展示；关闭后只显示最终回答"
         },
         {
+          "key": "petReact",
+          "label": "桌宠跟随对话",
+          "type": "boolean",
+          "default": true,
+          "hint": "对话时桌宠播放对应动画：等待时思考冒泡、推理时碎碎念、输出时忙碌点按、完成后庆祝、出错时叹气"
+        },
+        {
+          "key": "syncReply",
+          "label": "回复同步到桌面",
+          "type": "boolean",
+          "default": true,
+          "hint": "对话窗口最小化或不在前台时，回复完成后桌宠用气泡说出开头几句，点气泡打开对话窗口"
+        },
+        {
           "key": "systemPrompt",
           "label": "系统提示词",
           "type": "textarea",

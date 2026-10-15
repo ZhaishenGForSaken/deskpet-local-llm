@@ -138,6 +138,9 @@ async function loadAnimations() {
     const savedIdle = state._savedIdlePool || [];
     const savedClick = state._savedClickPool || [];
 
+    // 情景动画按名字查找时，从全部动画里找（不受闲置 / 点击池勾选影响）
+    state.allAnimations = [...(animations.scene || []), ...allIdle, ...allClick];
+
     state.idlePool = (savedIdle.length > 0) ? allIdle.filter(a => savedIdle.includes(a.name)) : allIdle;
     state.clickPool = (savedClick.length > 0) ? allClick.filter(a => savedClick.includes(a.name)) : allClick;
     if (state.idlePool.length === 0) state.idlePool = allIdle;
@@ -199,6 +202,10 @@ function setupIpcListeners() {
     await loadAnimations();
     if (!state.isPlayingClick && !state.isPlayingDrag) playRandomIdle();
   });
+
+  if (typeof window.petAPI.onPetActivity === 'function') {
+    window.petAPI.onPetActivity((activity) => applyActivity(activity));
+  }
 
   window.petAPI.onConfigChanged((config) => {
     if (config.scale !== undefined) state.config.scale = config.scale;
@@ -563,10 +570,59 @@ function pickAnimation(list) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-/** 回到闲置状态：循环播放常驻待机动画，并安排下一次动作动画 */
+// ====== 情景（由插件触发：对话中、出错 …） ======
+
+/** 情景默认最长持续时间：插件异常没有收尾时，桌宠也会自己回到闲置 */
+const ACTIVITY_DEFAULT_TTL = 5 * 60 * 1000;
+
+state.activity = null;          // { id, loop: [动画] }，存在时代替闲置节奏
+state.activityTimer = null;
+state.allAnimations = [];
+
+/** 按名字找动画（可省略 .webm），找不到返回 null */
+function findAnimationByName(name) {
+  const key = String(name || '').replace(/\.webm$/i, '');
+  if (!key) return null;
+  return state.allAnimations.find((a) => a.name.replace(/\.webm$/i, '') === key) || null;
+}
+
+/**
+ * 进入 / 退出情景
+ * @param {null | { id?: string, loop?: string[], once?: string, ttl?: number }} activity
+ *   loop：情景期间循环播放的动画（多个时随机一个）；once：先播一遍的反应动画；都没有 / null：回到闲置
+ */
+function applyActivity(activity) {
+  if (state.activityTimer) { clearTimeout(state.activityTimer); state.activityTimer = null; }
+  const loop = activity && Array.isArray(activity.loop) ? activity.loop.map(findAnimationByName).filter(Boolean) : [];
+  const once = activity && activity.once ? findAnimationByName(activity.once) : null;
+  state.activity = loop.length > 0 ? { id: String(activity.id || ''), loop } : null;
+
+  if (state.activity) {
+    const ttl = Number(activity.ttl) > 0 ? Number(activity.ttl) : ACTIVITY_DEFAULT_TTL;
+    state.activityTimer = setTimeout(() => applyActivity(null), ttl);
+  }
+
+  // 正在点击 / 拖拽：交给它们结束后回到当前情景
+  if (state.isPlayingClick || state.isPlayingDrag) return;
+  if (once) playIdleAction(once);   // 播完会调用 playRandomIdle，自动接上情景或闲置
+  else playRandomIdle();
+}
+
+/** 回到闲置状态：有情景时循环情景动画；否则循环常驻待机动画，并安排下一次动作动画 */
 function playRandomIdle() {
   if (state.autoIdleTimer) { clearTimeout(state.autoIdleTimer); state.autoIdleTimer = null; }
   state.idleActionToken = (state.idleActionToken || 0) + 1;
+
+  if (state.activity) {
+    const keep = state.activity.loop.find((a) => a.name === state.currentIdleFile && elements.video.loop === true);
+    if (!keep) {
+      const anim = pickAnimation(state.activity.loop);
+      state.currentIdleFile = anim.name;
+      playVideo(anim.path, true);
+    }
+    return;
+  }
+
   if (state.idlePool.length === 0) { createPlaceholderAnimation(); return; }
 
   const { base, actions } = splitIdlePool();
