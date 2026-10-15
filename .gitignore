@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Electron
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# Electron Store data (generated at runtime)
+config.json
+
+# electron-builder cache
+*.blockmap
+*.zip
+*.dmg
+*.exe
+build/__*
+
+# macOS
+*.app
+
+# Electron 单实例锁（运行时自动生成，含本机敏感信息）
+SingletonCookie
+SingletonLock
+SingletonSocket
+
+# 本地开发文档（不上传 GitHub）
+GITHUB_GUIDE.local.md
+
+# 博客
+BLOG.md
+
+# 动画素材
+assets/thumb/*.webm
+
+# 视频
+readme-assets/*.mp4
+readme-assets/*.mov
+readme-assets/*.gif
+
+# AGENT.md
+AGENT.md
+
+# 自检产生的临时 userData（npm run check:renderer）
+.smoke-userdata/
+
+backup/

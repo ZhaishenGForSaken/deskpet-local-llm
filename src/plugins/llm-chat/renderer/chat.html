@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 对话 - DeskLLMPet</title>
+  <link rel="stylesheet" href="chat.css">
+</head>
+<body class="platform-win">
+  <div id="title-bar">
+    <div class="title-left">
+      <span class="title-icon">💬</span>
+      <span class="title-text">DeskLLMPet AI 对话</span>
+    </div>
+    <div class="title-right" id="title-btns">
+      <button class="title-btn" id="btn-minimize" title="最小化">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
+      </button>
+      <button class="title-btn title-btn-close" id="btn-close" title="关闭">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="app-container">
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <button id="btn-new-conv" class="btn-new-conv">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          <span>新对话</span>
+        </button>
+      </div>
+      <div id="conv-list" class="conv-list"></div>
+    </aside>
+
+    <main id="chat-area">
+      <div id="key-warning" class="key-warning hidden">
+        <span>⚠️ 还没有配置 API Key，对话无法发送。</span>
+        <button id="btn-open-settings" class="key-warning-btn">去设置</button>
+      </div>
+      <div id="messages-container"></div>
+      <div id="input-area">
+        <div class="input-wrapper">
+          <textarea id="message-input" placeholder="输入消息，Enter 发送，Shift+Enter 换行..." rows="1"></textarea>
+          <button id="btn-send" class="send-btn" title="发送消息">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+        <div class="input-hint">
+          <span>模型: <strong id="current-model">-</strong></span>
+          <span class="hint-divider">|</span>
+          <span id="input-tip">Enter 发送 · Shift+Enter 换行</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 重命名弹窗 -->
+  <div id="rename-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>重命名对话</h3>
+      <input type="text" id="rename-input" maxlength="50" placeholder="输入新名称">
+      <div class="modal-actions">
+        <button id="btn-rename-cancel" class="btn btn-secondary">取消</button>
+        <button id="btn-rename-confirm" class="btn btn-primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="chat.js"></script>
+</body>
+</html>

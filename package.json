@@ -1,0 +1,98 @@
+{
+  "name": "deskllmpet",
+  "version": "1.1.0",
+  "description": "桌面宠物 - 支持 API 余额气泡、插件化扩展的交互式桌面伴侣",
+  "main": "src/main/main.js",
+  "author": "isKage",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/isKage/desk-llm-pet"
+  },
+  "bugs": {
+    "url": "https://github.com/isKage/desk-llm-pet/issues"
+  },
+  "homepage": "https://github.com/isKage/desk-llm-pet#readme",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dev:tools": "electron . --dev --devtools",
+    "check": "node scripts/self-check.js",
+    "check:renderer": "electron scripts/smoke-renderer.js",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:all": "electron-builder --win --mac",
+    "postinstall": "node scripts/setup-assets.js"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.iskage.deskllmpet",
+    "productName": "DeskLLMPet",
+    "copyright": "MIT License - isKage",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.entertainment",
+      "icon": "build/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSApplicationSupportsSecureRestorableState": true,
+        "LSUIElement": false
+      }
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "DeskLLMPet",
+      "uninstallDisplayName": "DeskLLMPet"
+    },
+    "asar": true,
+    "asarUnpack": []
+  },
+  "allowScripts": {
+    "electron@28.3.3": true
+  }
+}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskLLMPet</title>
+  <link rel="stylesheet" href="pet.css">
+</head>
+<body>
+  <!-- 桌宠主体容器：窗口只显示动画中间一块（裁剪），气泡与右键菜单都由独立窗口负责 -->
+  <div id="pet-container">
+    <!-- 动画播放区域（尺寸 = 窗口 / 裁剪比例，超出部分被容器裁掉） -->
+    <video
+      id="pet-video"
+      autoplay
+      loop
+      muted
+      playsinline
+      preload="auto"
+    ></video>
+  </div>
+
+  <script src="pet.js"></script>
+</body>
+</html>

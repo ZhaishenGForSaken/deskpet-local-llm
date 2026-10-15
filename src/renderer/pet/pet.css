@@ -1,0 +1,92 @@
+/**
+ * 桌宠样式
+ * 透明背景、无边框；窗口只显示动画中间一块（窗口裁剪）
+ * 气泡与右键菜单都由独立窗口负责，所以这里只有桌宠本身
+ */
+
+/* ====== 全局重置 ====== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  /* 注意：这里不能声明 -webkit-app-region，否则 macOS 上的拖拽区域视图会拦截文件拖入事件 */
+}
+
+/* ====== 桌宠容器（窗口裁剪框） ====== */
+#pet-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden; /* 关键：超出窗口的动画部分直接裁掉 */
+  /* 拖拽通过 JS 实现，不使用 CSS drag region，否则会拦截鼠标事件 */
+}
+
+/* 视频播放时显示抓取光标 */
+#pet-container:active {
+  cursor: grabbing;
+}
+
+/* ====== 视频元素 ====== */
+/* 动画本身按 (100% / 裁剪比例) 渲染：窗口变小，宠物大小不变，只是周围背景被裁掉 */
+#pet-video {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(100% / var(--pet-crop, 1));
+  height: calc(100% / var(--pet-crop, 1));
+  object-fit: contain;
+  background: transparent;
+  /* 禁止拖拽图片 */
+  -webkit-user-drag: none;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  transform: translate(-50%, -50%) translate(var(--pet-offset-x, 0%), var(--pet-offset-y, 0%));
+}
+
+/* 视频切换时的淡入淡出效果 */
+#pet-video.switching {
+  opacity: 0.5;
+}
+
+/* ====== 状态指示器 ====== */
+#status-indicator {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+}
+
+#status-indicator.hidden {
+  display: none;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}

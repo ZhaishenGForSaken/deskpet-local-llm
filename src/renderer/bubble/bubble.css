@@ -1,0 +1,202 @@
+/**
+ * 气泡窗口样式
+ * 独立透明窗口，所有尺寸都由 --bubble-scale 缩放，方便用户调大小
+ */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* 外层留出阴影与尾巴的空间 */
+body {
+  padding: calc(10px * var(--bubble-scale, 1)) calc(10px * var(--bubble-scale, 1))
+           calc(20px * var(--bubble-scale, 1));
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+#bubble-root {
+  position: relative;
+  --s: var(--bubble-scale, 1);
+  animation: bubbleIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+#bubble-root.hidden {
+  display: none;
+}
+
+/* 指向宠物的尾巴 */
+.bubble-tail {
+  position: absolute;
+  left: 50%;
+  bottom: calc(-7px * var(--s));
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: calc(7px * var(--s)) solid transparent;
+  border-right: calc(7px * var(--s)) solid transparent;
+  border-top: calc(8px * var(--s)) solid rgba(24, 28, 50, 0.97);
+}
+
+/* ====== 普通文字气泡 ====== */
+.text-bubble {
+  max-width: calc(240px * var(--s));
+  padding: calc(8px * var(--s)) calc(16px * var(--s));
+  border-radius: calc(16px * var(--s));
+  background: rgba(30, 30, 50, 0.92);
+  backdrop-filter: blur(calc(10px * var(--s)));
+  -webkit-backdrop-filter: blur(calc(10px * var(--s)));
+  color: #e6e8f5;
+  font-size: calc(13px * var(--s));
+  line-height: 1.45;
+  white-space: pre-line;
+  text-align: center;
+  word-break: break-word;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 calc(6px * var(--s)) calc(22px * var(--s)) rgba(0, 0, 0, 0.42);
+}
+
+.text-bubble.hidden {
+  display: none;
+}
+
+/* ====== 余额卡片 ====== */
+.balance-card {
+  min-width: calc(196px * var(--s));
+  max-width: calc(268px * var(--s));
+  padding: calc(10px * var(--s)) calc(14px * var(--s)) calc(12px * var(--s));
+  border-radius: calc(16px * var(--s));
+  background: linear-gradient(150deg, rgba(40, 48, 86, 0.97) 0%, rgba(20, 24, 44, 0.98) 58%, rgba(30, 36, 68, 0.98) 100%);
+  border: 1px solid rgba(94, 140, 255, 0.38);
+  box-shadow:
+    0 calc(10px * var(--s)) calc(26px * var(--s)) rgba(0, 0, 0, 0.5),
+    0 0 calc(22px * var(--s)) rgba(77, 107, 254, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(calc(12px * var(--s)));
+  -webkit-backdrop-filter: blur(calc(12px * var(--s)));
+  text-align: left;
+}
+
+.balance-card.hidden {
+  display: none;
+}
+
+.balance-card.warn {
+  border-color: rgba(255, 176, 80, 0.55);
+  box-shadow:
+    0 calc(10px * var(--s)) calc(26px * var(--s)) rgba(0, 0, 0, 0.5),
+    0 0 calc(22px * var(--s)) rgba(255, 176, 80, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.balance-head {
+  display: flex;
+  align-items: center;
+  gap: calc(5px * var(--s));
+  font-size: calc(11px * var(--s));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #8fb0ff;
+}
+
+.balance-icon {
+  font-size: calc(13px * var(--s));
+  line-height: 1;
+}
+
+.balance-badge {
+  margin-left: auto;
+  font-size: calc(10px * var(--s));
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: calc(1px * var(--s)) calc(7px * var(--s));
+  border-radius: calc(999px * var(--s));
+  background: rgba(77, 107, 254, 0.18);
+  color: #a9c2ff;
+}
+
+.balance-card.warn .balance-head {
+  color: #ffc981;
+}
+
+.balance-card.warn .balance-badge {
+  background: rgba(255, 176, 80, 0.18);
+  color: #ffd7a1;
+}
+
+.balance-value {
+  margin-top: calc(5px * var(--s));
+  font-size: calc(25px * var(--s));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 12px rgba(77, 107, 254, 0.45);
+}
+
+.balance-value .currency {
+  font-size: calc(15px * var(--s));
+  font-weight: 600;
+  color: #c9d8ff;
+  margin-right: 1px;
+}
+
+.balance-sub {
+  margin-top: calc(4px * var(--s));
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(4px * var(--s)) calc(10px * var(--s));
+  font-size: calc(11px * var(--s));
+  color: rgba(214, 224, 255, 0.62);
+}
+
+.balance-sub .item {
+  white-space: nowrap;
+}
+
+@keyframes bubbleIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ====== 跟随系统浅色 ====== */
+@media (prefers-color-scheme: light) {
+  .text-bubble {
+    background: rgba(255, 255, 255, 0.95);
+    color: #2a3040;
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 calc(6px * var(--s)) calc(22px * var(--s)) rgba(60, 70, 120, 0.22);
+  }
+  .bubble-tail {
+    border-top-color: rgba(255, 255, 255, 0.95);
+  }
+  .balance-card {
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.97) 0%, rgba(238, 242, 255, 0.98) 100%);
+    border-color: rgba(77, 107, 254, 0.3);
+    box-shadow:
+      0 calc(10px * var(--s)) calc(26px * var(--s)) rgba(60, 70, 120, 0.22),
+      0 0 calc(18px * var(--s)) rgba(77, 107, 254, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+  .balance-head { color: #3f5fd0; }
+  .balance-badge { background: rgba(77, 107, 254, 0.12); color: #3f5fd0; }
+  .balance-value { color: #1c2340; text-shadow: none; }
+  .balance-value .currency { color: #4a5a8f; }
+  .balance-sub { color: rgba(40, 50, 90, 0.6); }
+  .balance-card ~ .bubble-tail { border-top-color: rgba(238, 242, 255, 0.98); }
+}

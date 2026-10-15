@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeskLLMPet Menu</title>
+  <link rel="stylesheet" href="menu.css">
+</head>
+<body>
+  <!--
+    桌宠右键菜单（独立窗口）
+    窗口尺寸由本内容决定，并会按屏幕可用区域收敛，菜单项再多也不会被裁掉
+  -->
+  <div id="menu" role="menu">
+    <div class="menu-item" data-action="balance" role="menuitem">
+      <span class="menu-icon">💰</span>
+      <span class="menu-label">查看 API 余额</span>
+    </div>
+
+    <!-- 插件贡献的菜单项（无插件时保持为空，不影响本体菜单） -->
+    <div id="plugin-menu-items" class="hidden"></div>
+
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="settings" role="menuitem">
+      <span class="menu-icon">⚙️</span>
+      <span class="menu-label">设置</span>
+    </div>
+
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="hide" role="menuitem">
+      <span class="menu-icon">👁️</span>
+      <span class="menu-label">隐藏桌宠</span>
+    </div>
+
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="quit" role="menuitem">
+      <span class="menu-icon">🚪</span>
+      <span class="menu-label">退出</span>
+    </div>
+  </div>
+
+  <script src="menu.js"></script>
+</body>
+</html>
