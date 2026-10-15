@@ -575,8 +575,8 @@ function pickAnimation(list) {
 /** 情景默认最长持续时间：插件异常没有收尾时，桌宠也会自己回到闲置 */
 const ACTIVITY_DEFAULT_TTL = 5 * 60 * 1000;
 
-state.activity = null;          // { id, loop: [动画] }，存在时代替闲置节奏
-state.activityTimer = null;
+state.activity = null;              // 当前生效的情景 { source, id, loop: [动画], priority }，存在时代替闲置节奏
+state.activityLayers = new Map();   // 来源（插件 id）→ 情景；优先级最高的生效（对话 10 > 行为感知 1）
 state.allAnimations = [];
 
 /** 按名字找动画（可省略 .webm），找不到返回 null */
@@ -586,26 +586,57 @@ function findAnimationByName(name) {
   return state.allAnimations.find((a) => a.name.replace(/\.webm$/i, '') === key) || null;
 }
 
+/** 取优先级最高的图层作为当前情景（同优先级取后设置的） */
+function refreshActivity() {
+  let top = null;
+  for (const layer of state.activityLayers.values()) {
+    if (!top || layer.priority >= top.priority) top = layer;
+  }
+  state.activity = top;
+}
+
 /**
- * 进入 / 退出情景
- * @param {null | { id?: string, loop?: string[], once?: string, ttl?: number }} activity
- *   loop：情景期间循环播放的动画（多个时随机一个）；once：先播一遍的反应动画；都没有 / null：回到闲置
+ * 某个来源进入 / 退出情景
+ * @param {{ source?: string, activity: null | { id?: string, loop?: string[], once?: string, priority?: number, ttl?: number } }} payload
+ *   loop：情景期间循环播放的动画（多个时按节奏轮换）；once：先播一遍的反应动画；activity 为 null：撤销该来源的情景
  */
-function applyActivity(activity) {
-  if (state.activityTimer) { clearTimeout(state.activityTimer); state.activityTimer = null; }
+function applyActivity(payload) {
+  const source = payload && typeof payload.source === 'string' ? payload.source : 'default';
+  const activity = payload && Object.prototype.hasOwnProperty.call(payload, 'activity') ? payload.activity : payload;
+  const before = state.activity;
+
+  const old = state.activityLayers.get(source);
+  if (old && old.timer) clearTimeout(old.timer);
+  state.activityLayers.delete(source);
+
   const loop = activity && Array.isArray(activity.loop) ? activity.loop.map(findAnimationByName).filter(Boolean) : [];
   const once = activity && activity.once ? findAnimationByName(activity.once) : null;
-  state.activity = loop.length > 0 ? { id: String(activity.id || ''), loop } : null;
+  const priority = Number(activity && activity.priority) || 0;
 
-  if (state.activity) {
+  if (loop.length > 0) {
+    const layer = { source, id: String(activity.id || ''), loop, priority, timer: null };
     const ttl = Number(activity.ttl) > 0 ? Number(activity.ttl) : ACTIVITY_DEFAULT_TTL;
-    state.activityTimer = setTimeout(() => applyActivity(null), ttl);
+    layer.timer = setTimeout(() => {
+      if (state.activityLayers.get(source) !== layer) return;
+      state.activityLayers.delete(source);
+      refreshActivity();
+      if (!state.isPlayingClick && !state.isPlayingDrag) playRandomIdle();
+    }, ttl);
+    state.activityLayers.set(source, layer);
   }
+  refreshActivity();
 
   // 正在点击 / 拖拽：交给它们结束后回到当前情景
   if (state.isPlayingClick || state.isPlayingDrag) return;
-  if (once) playIdleAction(once);   // 播完会调用 playRandomIdle，自动接上情景或闲置
-  else playRandomIdle();
+  // 反应动画只在没有更高优先级情景时播放（例如对话进行中不播吃饭动画）
+  if (once && (!state.activity || state.activity.priority <= priority)) {
+    playIdleAction(once);   // 播完会调用 playRandomIdle，自动接上情景或闲置
+    return;
+  }
+  // 生效的情景没变（例如续期、低优先级图层更新）：不打断正在播放的动画
+  const sameTop = before && state.activity && before.source === state.activity.source && before.id === state.activity.id;
+  if (sameTop || (!before && !state.activity)) return;
+  playRandomIdle();
 }
 
 /** 回到闲置状态：有情景时循环情景动画；否则循环常驻待机动画，并安排下一次动作动画 */
@@ -614,12 +645,15 @@ function playRandomIdle() {
   state.idleActionToken = (state.idleActionToken || 0) + 1;
 
   if (state.activity) {
-    const keep = state.activity.loop.find((a) => a.name === state.currentIdleFile && elements.video.loop === true);
+    const loop = state.activity.loop;
+    const keep = loop.find((a) => a.name === state.currentIdleFile && elements.video.loop === true);
     if (!keep) {
-      const anim = pickAnimation(state.activity.loop);
+      const anim = pickAnimation(loop);
       state.currentIdleFile = anim.name;
       playVideo(anim.path, true);
     }
+    // 情景有多个动画时，按「动画素材 → 播放节奏」的间隔在它们之间轮换
+    if (loop.length > 1) scheduleIdleSwitch(loop, false);
     return;
   }
 

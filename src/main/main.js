@@ -5,7 +5,7 @@
  */
 
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, nativeTheme, nativeImage } = electron;
+const { app, BrowserWindow, ipcMain, nativeTheme, nativeImage, powerMonitor } = electron;
 const path = require('path');
 const {
   createPetWindow, getPetWindow, setPetGeometryListener
@@ -159,13 +159,18 @@ async function loadPlugins() {
             onClick: typeof payload.onClick === 'function' ? payload.onClick : undefined
           }).success;
         },
-        // 让桌宠进入某个情景（循环播放指定动画 / 播一次反应动画），null 表示回到闲置
-        setPetActivity: (activity) => {
+        // 让桌宠进入某个情景（循环播放指定动画 / 播一次反应动画）；source 为插件 id，null 撤销该插件的情景
+        setPetActivity: (source, activity) => {
           const pet = getPetWindow();
           if (!pet || pet.isDestroyed()) return false;
-          pet.webContents.send('pet-activity', activity && typeof activity === 'object' ? activity : null);
+          pet.webContents.send('pet-activity', {
+            source: String(source || 'default'),
+            activity: activity && typeof activity === 'object' ? activity : null
+          });
           return true;
         },
+        // 系统键鼠空闲秒数
+        getIdleSeconds: () => powerMonitor.getSystemIdleTime(),
         // 打开本体的设置窗口
         openSettings: () => { createSettingsWindow(); return true; }
       }

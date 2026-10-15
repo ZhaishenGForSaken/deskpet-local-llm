@@ -456,6 +456,26 @@ check('动画节奏配置写盘前会被清洗（限范围 / 最短不大于最�
   assertEqual(JSON.stringify(normalizeAnimationConfig({ idlePool: ['x.webm'] })), '{"idlePool":["x.webm"]}', '未提供的字段不写');
 });
 
+check('行为感知：按程序名 / 空闲时间 / 标题判定场景', () => {
+  const { detectScene, festivalAt, mealAt, isSelf } = require('../src/plugins/activity-sense/scenes');
+  const base = { awayMinutes: 5, readTitles: false };
+  assertEqual(detectScene({ process: 'Code', title: '' }, 3, base), 'coding', 'VS Code');
+  assertEqual(detectScene({ process: 'WINWORD', title: '' }, 3, base), 'study', 'Word');
+  assertEqual(detectScene({ process: 'cloudmusic', title: '' }, 3, base), 'music', '网易云');
+  assertEqual(detectScene({ process: 'Code', title: '' }, 200, base), 'drowsy', '空闲超过 2 分钟打哈欠');
+  assertEqual(detectScene({ process: 'Code', title: '' }, 400, base), 'sleep', '空闲超过 5 分钟睡着');
+  assertEqual(detectScene({ process: 'explorer', title: '' }, 3, base), null, '未知程序为普通闲置');
+  const bili = { process: 'chrome', title: '【4K】某视频 - 哔哩哔哩' };
+  assertEqual(detectScene(bili, 3, base), null, '未开启读取标题时不看标题');
+  assertEqual(detectScene(bili, 3, { ...base, readTitles: true }), 'video', '开启后识别视频网站');
+  assertEqual(detectScene({ process: 'MyGame', title: '' }, 3, { ...base, gameApps: 'mygame' }), 'game', '自定义程序列表');
+  assertEqual(isSelf('electron'), true, '自身窗口');
+  assertEqual(festivalAt(new Date(2026, 8, 25)).id, 'mid-autumn', '2026 中秋');
+  assertEqual(festivalAt(new Date(2026, 9, 15)), null, '普通日子');
+  assertEqual(mealAt(new Date(2026, 9, 15, 12, 0)).id, 'lunch', '午饭时间');
+  assertEqual(mealAt(new Date(2026, 9, 15, 15, 0)), null, '非饭点');
+});
+
 check('右键菜单：贴着鼠标展开，且任何情况下都完整落在屏幕内', () => {
   const workArea = { x: 0, y: 0, width: 1440, height: 900 };
   const size = { width: 200, height: 260 };

@@ -1,0 +1,124 @@
+{
+  "id": "activity-sense",
+  "name": "行为感知",
+  "version": "1.0.0",
+  "description": "根据你正在用的程序、键鼠空闲时间、时间段和节日，让桌宠播放对应的情景动画（写代码、学习、听歌、发呆、吃饭、熬夜提醒…）。默认只读程序名，窗口标题需手动开启，所有信息只在本机内存中使用。",
+  "author": "DeskPet",
+  "main": "main.js",
+  "enabled": true,
+  "contributes": {
+    "settings": {
+      "title": "行为感知",
+      "icon": "🧭",
+      "description": "程序名和窗口标题只在本机内存里用于匹配场景：不写盘、不记日志、不发给任何模型。识别不准时，把程序名加到下面对应的列表里即可（点「查看当前识别」能看到当前前台的程序名）。",
+      "fields": [
+        {
+          "key": "enabled",
+          "label": "启用行为感知",
+          "type": "boolean",
+          "default": true,
+          "hint": "关闭后桌宠只按「动画素材」里的节奏播放"
+        },
+        {
+          "key": "readTitles",
+          "label": "读取窗口标题",
+          "type": "boolean",
+          "default": false,
+          "hint": "默认关闭。开启后可识别「浏览器里看 B 站 / YouTube」等场景；标题只在本机内存中匹配关键词"
+        },
+        {
+          "key": "awayMinutes",
+          "label": "离开判定（分钟）",
+          "type": "number",
+          "default": 5,
+          "min": 1,
+          "max": 120,
+          "step": 1,
+          "hint": "键鼠多久不动算离开（桌宠睡着）；超过一半时间先打哈欠。回来时桌宠会被惊醒并打招呼"
+        },
+        {
+          "key": "switchSeconds",
+          "label": "场景切换延迟（秒）",
+          "type": "number",
+          "default": 30,
+          "min": 0,
+          "max": 600,
+          "step": 1,
+          "hint": "新场景要持续这么久才切换，避免频繁切窗口时动画跟着乱跳"
+        },
+        {
+          "key": "mealReminders",
+          "label": "吃饭提醒",
+          "type": "boolean",
+          "default": true,
+          "hint": "7–9 点、11:30–13 点、17:30–19:30 各提醒一次，并播放吃饭动画"
+        },
+        {
+          "key": "lateNightReminder",
+          "label": "熬夜提醒",
+          "type": "boolean",
+          "default": true,
+          "hint": "23 点到 5 点之间每 30 分钟打个哈欠提醒休息"
+        },
+        {
+          "key": "festivals",
+          "label": "节日动画",
+          "type": "boolean",
+          "default": true,
+          "hint": "元旦、春节、中秋、圣诞当天打招呼并不时播放节日动画"
+        },
+        {
+          "key": "codingApps",
+          "label": "写代码的程序",
+          "type": "textarea",
+          "rows": 2,
+          "default": "Code, Cursor, Windsurf, Trae, pycharm64, idea64, webstorm64, clion64, goland64, rider64, devenv, sublime_text, notepad++, zed, WindowsTerminal, powershell, pwsh, cmd, wsl, Xcode, Terminal, iTerm2",
+          "hint": "程序名（不带 .exe），逗号或换行分隔，不区分大小写"
+        },
+        {
+          "key": "studyApps",
+          "label": "学习 / 文档的程序",
+          "type": "textarea",
+          "rows": 2,
+          "default": "WINWORD, EXCEL, POWERPNT, wps, et, wpp, Acrobat, AcroRd32, SumatraPDF, Notion, Obsidian, ONENOTE, Typora, Zotero, Anki, Microsoft Word, Microsoft Excel, Microsoft PowerPoint, Preview",
+          "hint": "播放「轻快记录」「深度思考碎碎念」"
+        },
+        {
+          "key": "musicApps",
+          "label": "听音乐的程序",
+          "type": "textarea",
+          "rows": 2,
+          "default": "Spotify, cloudmusic, QQMusic, KuGou, kwmusic, foobar2000, AppleMusic, Music, 网易云音乐",
+          "hint": "播放「小提琴演奏」「悠闲哼歌」"
+        },
+        {
+          "key": "videoApps",
+          "label": "看视频的程序",
+          "type": "textarea",
+          "rows": 2,
+          "default": "PotPlayerMini64, PotPlayerMini, vlc, mpv, IINA, QuickTime Player",
+          "hint": "播放「撸猫」「悠闲哼歌」；浏览器里看视频需要开启「读取窗口标题」"
+        },
+        {
+          "key": "videoKeywords",
+          "label": "视频网站标题关键词",
+          "type": "textarea",
+          "rows": 2,
+          "default": "bilibili, 哔哩哔哩, YouTube, Netflix, 爱奇艺, 腾讯视频, 优酷, 抖音, Twitch, 斗鱼, 虎牙",
+          "hint": "仅在开启「读取窗口标题」后生效：浏览器标题包含这些词时视为看视频"
+        },
+        {
+          "key": "gameApps",
+          "label": "游戏程序",
+          "type": "textarea",
+          "rows": 2,
+          "default": "League of Legends, LeagueClient, YuanShen, GenshinImpact, StarRail, ZenlessZoneZero, cs2, dota2, VALORANT-Win64-Shipping, eldenring, Overwatch, Minecraft",
+          "hint": "播放「玩游戏气急败坏」；把你常玩游戏的程序名加进来"
+        }
+      ],
+      "actions": [
+        { "id": "status", "label": "🔍 查看当前识别", "style": "secondary" }
+      ]
+    }
+  }
+}

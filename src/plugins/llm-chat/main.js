@@ -28,11 +28,11 @@ const CHATTER_MAX_LENGTH = 80;
 
 /** 对话各阶段桌宠播放的动画（找不到的动画会被桌宠忽略） */
 const PET_ACTIVITY = {
-  waiting: { id: 'chat-waiting', loop: ['工作状态-思考冒泡'] },
-  reasoning: { id: 'chat-reasoning', loop: ['深度思考碎碎念'] },
-  typing: { id: 'chat-typing', loop: ['工作状态-忙碌点按', '写代码'] },
-  done: { id: 'chat-done', once: '工作状态-雀跃庆祝' },
-  error: { id: 'chat-error', once: '工作状态-垂头叹气冒汗' }
+  waiting: { id: 'chat-waiting', loop: ['工作状态-思考冒泡'], priority: 10 },
+  reasoning: { id: 'chat-reasoning', loop: ['深度思考碎碎念'], priority: 10 },
+  typing: { id: 'chat-typing', loop: ['工作状态-忙碌点按', '写代码'], priority: 10 },
+  done: { id: 'chat-done', once: '工作状态-雀跃庆祝', priority: 10 },
+  error: { id: 'chat-error', once: '工作状态-垂头叹气冒汗', priority: 10 }
 };
 
 /** 回复同步到桌宠气泡时最多展示的字数 */

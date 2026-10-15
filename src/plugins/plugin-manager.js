@@ -413,12 +413,20 @@ function createPluginManager(options = {}) {
           : () => null,
         /**
          * 让桌宠进入某个情景（可选服务）
-         * { id, loop?: [动画名], once?: 动画名, ttl?: 毫秒 }；传 null 回到闲置
+         * { id, loop?: [动画名], once?: 动画名, priority?: 数字, ttl?: 毫秒 }；传 null 撤销本插件的情景
          */
         setPetActivity: typeof hostServices.setPetActivity === 'function'
           ? (activity) => {
-            try { return hostServices.setPetActivity(activity) !== false; }
+            // 以插件 id 作为图层来源：各插件的情景互不覆盖，按 priority 决定谁生效
+            try { return hostServices.setPetActivity(id, activity) !== false; }
             catch (e) { return false; }
+          }
+          : null,
+        /** 系统键鼠空闲秒数（可选服务） */
+        getIdleSeconds: typeof hostServices.getIdleSeconds === 'function'
+          ? () => {
+            try { return Number(hostServices.getIdleSeconds()) || 0; }
+            catch (e) { return 0; }
           }
           : null,
         /** 让桌宠弹出一个文字气泡（可选服务）：{ text, duration, onClick? }，传了 onClick 气泡可点击 */
