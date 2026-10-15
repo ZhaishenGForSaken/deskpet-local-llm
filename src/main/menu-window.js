@@ -27,6 +27,12 @@ let menuWindow = null;
 let contentSize = { ...FALLBACK_SIZE };
 /** 本次打开的锚点（屏幕坐标）；为 null 表示这次打开不再需要显示 */
 let pendingAnchor = null;
+/**
+ * 本次展开的锚点：显示后仍保留到菜单收起。
+ * 隐藏窗口里的 requestAnimationFrame 会被暂停，渲染进程的尺寸回报可能在菜单已经（按兜底）显示之后才到，
+ * 这时 pendingAnchor 已清空，必须用它来定位，否则菜单会跳到屏幕左上角
+ */
+let currentAnchor = null;
 /** 打开序号：收起菜单 / 重新打开都会自增，用来作废还没走完的异步流程 */
 let openToken = 0;
 
@@ -128,6 +134,7 @@ function openMenuWindow(payload = {}) {
   if (!win) return { success: false, error: '菜单窗口不可用' };
 
   pendingAnchor = { x: Math.round(anchorX), y: Math.round(anchorY) };
+  currentAnchor = pendingAnchor;
   const token = ++openToken;
 
   // 渲染进程加载完成后再让它渲染菜单项并测量尺寸
@@ -163,7 +170,9 @@ function applyMenuSize(size) {
   const win = getMenuWindow();
   if (!win) return;
 
-  const anchor = pendingAnchor || { x: 0, y: 0 };
+  // 菜单已收起时的迟到回报：只记下尺寸，不移动窗口
+  const anchor = pendingAnchor || currentAnchor;
+  if (!anchor) return;
   const display = screen.getDisplayNearestPoint({ x: anchor.x, y: anchor.y });
   win.setBounds(computeMenuBounds({ anchor, size: contentSize, workArea: display.workArea }));
 
@@ -177,6 +186,7 @@ function applyMenuSize(size) {
 /** 收起菜单（点击别处 / 选中菜单项 / 宠物隐藏时调用，可重复调用） */
 function hideMenuWindow() {
   pendingAnchor = null;
+  currentAnchor = null;
   openToken += 1;
   const win = getMenuWindow();
   if (win && win.isVisible()) win.hide();
