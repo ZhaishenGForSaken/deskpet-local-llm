@@ -10,4 +10,7 @@ If Not fso.FileExists(exe) Then
   WScript.Quit 1
 End If
 sh.CurrentDirectory = root
-sh.Run """" & exe & """ .", 0, False
+' Window style must be 1 (normal), not 0 (hidden): Windows applies the launch style to the
+' first normally-shown window of the process, which made the first settings / chat window
+' invisible. electron.exe is a GUI app, so no console window appears either way.
+sh.Run """" & exe & """ .", 1, False
