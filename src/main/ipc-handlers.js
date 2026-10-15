@@ -9,7 +9,7 @@ const fs = require('fs');
 const {
   getLLMConfig, setLLMConfig,
   getBalanceConfig, setBalanceConfig,
-  getAnimationConfig, setAnimationConfig,
+  getAnimationConfig, setAnimationConfig, normalizeAnimationConfig,
   getPetConfig, setPetConfig,
   getBubbleConfig, setBubbleConfig,
   normalizeCustomPhrases, MAX_PHRASE_LENGTH,
@@ -108,7 +108,7 @@ function registerIpcHandlers() {
 
   // 更新动画配置时，通知桌宠窗口实时重载动画
   ipcMain.handle('set-animation-config', (event, config) => {
-    setAnimationConfig(config);
+    setAnimationConfig(normalizeAnimationConfig(config));
     // 通知桌宠窗口重载动画
     sendToPet('reload-animations', getAnimationConfig());
     return { success: true };

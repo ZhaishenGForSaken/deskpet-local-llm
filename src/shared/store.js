@@ -16,7 +16,12 @@ const defaults = {
   animations: {
     idlePool: [],
     clickPool: [],
-    currentIdleIndex: 0
+    currentIdleIndex: 0,
+    // 闲置播放节奏：平时循环「待机」动画，隔一段随机时间完整播放一个「动作」动画
+    basePool: [],          // 被设为「待机」的闲置动画；为空时按文件名自动判断（待机 / 呼吸 / 东张西望）
+    actionEnabled: true,   // 是否穿插动作动画
+    actionGapMin: 20,      // 两次动作动画的最短间隔（秒）
+    actionGapMax: 45       // 两次动作动画的最长间隔（秒）
   },
   // 模型状态气泡（沿用 balance 键名，便于兼容旧配置结构）
   balance: {
@@ -94,6 +99,37 @@ function setBalanceConfig(config) {
 function getAnimationConfig() { return { ...defaults.animations, ...getStore().get('animations') }; }
 function setAnimationConfig(config) { getStore().set('animations', { ...getAnimationConfig(), ...config }); }
 
+/** 动作动画间隔的取值范围（秒） */
+const ACTION_GAP_LIMIT = { min: 3, max: 3600 };
+
+/**
+ * 清洗动画配置：名单只保留字符串，间隔限制在合理范围内且最短不大于最长
+ * 纯函数，写盘前统一用它
+ */
+function normalizeAnimationConfig(input) {
+  const config = input && typeof input === 'object' ? input : {};
+  const next = {};
+  for (const key of ['idlePool', 'clickPool', 'basePool']) {
+    if (Array.isArray(config[key])) next[key] = config[key].filter((n) => typeof n === 'string' && n);
+  }
+  if (config.actionEnabled !== undefined) next.actionEnabled = !!config.actionEnabled;
+  const clampGap = (value, fallback) => {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return fallback;
+    return Math.round(Math.min(ACTION_GAP_LIMIT.max, Math.max(ACTION_GAP_LIMIT.min, num)));
+  };
+  // 只给了一端时，另一端用默认值兜底（纯函数，不读盘）
+  const current = defaults.animations;
+  if (config.actionGapMin !== undefined || config.actionGapMax !== undefined) {
+    let min = clampGap(config.actionGapMin, current.actionGapMin);
+    let max = clampGap(config.actionGapMax, current.actionGapMax);
+    if (min > max) [min, max] = [max, min];
+    next.actionGapMin = min;
+    next.actionGapMax = max;
+  }
+  return next;
+}
+
 // ====== 宠物设置 ======
 function getPetConfig() { return { ...defaults.pet, ...getStore().get('pet') }; }
 function setPetConfig(config) { getStore().set('pet', { ...getPetConfig(), ...config }); }
@@ -121,7 +157,7 @@ module.exports = {
   getLLMConfig, setLLMConfig,
   getBalanceConfig, setBalanceConfig,
   normalizeCustomPhrases, MAX_PHRASE_LENGTH, MAX_PHRASE_COUNT,
-  getAnimationConfig, setAnimationConfig,
+  getAnimationConfig, setAnimationConfig, normalizeAnimationConfig, ACTION_GAP_LIMIT,
   getPetConfig, setPetConfig,
   getBubbleConfig, setBubbleConfig,
   saveWindowPosition, getWindowPosition,

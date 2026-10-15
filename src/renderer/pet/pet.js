@@ -102,6 +102,7 @@ async function loadConfig() {
     state.appPath = appPath;
     state._savedIdlePool = animConfig.idlePool || [];
     state._savedClickPool = animConfig.clickPool || [];
+    applyRhythmConfig(animConfig);
     applyBalanceConfig(balanceConfig);
   } catch (e) { console.error('加载配置失败:', e); }
 }
@@ -194,6 +195,7 @@ function setupIpcListeners() {
     console.log('🔄 动画配置变更，实时重载');
     state._savedIdlePool = animConfig.idlePool || [];
     state._savedClickPool = animConfig.clickPool || [];
+    applyRhythmConfig(animConfig);
     await loadAnimations();
     if (!state.isPlayingClick && !state.isPlayingDrag) playRandomIdle();
   });
@@ -513,24 +515,42 @@ function setupDropSafetyGuard() {
 // ====== 动画控制 ======
 
 /**
- * 闲置节奏：平时循环播放「常驻待机」动画，隔一段随机时间穿插一个「动作」动画，
- * 动作动画完整播放一遍后再回到待机 —— 不会在播放中途被切走
+ * 闲置节奏：平时循环播放「待机」动画，隔一段随机时间穿插一个「动作」动画，
+ * 动作动画完整播放一遍后再回到待机 —— 任何动画都不会在播放中途被切走
+ * 哪些算待机、间隔多久、是否穿插动作，都可以在「设置 → 动画素材 → 播放节奏」里调
  */
+/** 没有手动指定待机动画时，按文件名自动判断（与设置页保持一致） */
 const BASE_IDLE_PATTERN = /待机|呼吸|东张西望/;
-/** 两次动作动画之间的随机间隔（毫秒） */
-const IDLE_ACTION_GAP_MIN = 20000;
-const IDLE_ACTION_GAP_MAX = 45000;
-/** 动作动画的兜底时长：万一没收到 ended 事件，也会回到待机 */
-const IDLE_ACTION_MAX_MS = 20000;
+/** 单个片段的兜底时长：万一没收到 ended 事件，也会继续往下走 */
+const IDLE_CLIP_MAX_MS = 20000;
+
+/** 播放节奏配置（秒），由设置页下发 */
+state.rhythm = { basePool: [], actionEnabled: true, actionGapMin: 20, actionGapMax: 45 };
+
+function applyRhythmConfig(config) {
+  if (!config) return;
+  const r = state.rhythm;
+  if (Array.isArray(config.basePool)) r.basePool = config.basePool;
+  if (config.actionEnabled !== undefined) r.actionEnabled = config.actionEnabled !== false;
+  const min = Number(config.actionGapMin);
+  const max = Number(config.actionGapMax);
+  if (Number.isFinite(min) && min > 0) r.actionGapMin = min;
+  if (Number.isFinite(max) && max > 0) r.actionGapMax = max;
+  if (r.actionGapMin > r.actionGapMax) [r.actionGapMin, r.actionGapMax] = [r.actionGapMax, r.actionGapMin];
+}
 
 function startIdleAnimation() {
   playRandomIdle();
 }
 
-/** 把闲置池分成常驻待机与动作两组；没有匹配的待机动画时，用第一个闲置动画当待机 */
+/** 把闲置池分成待机与动作两组；一个待机都没有时，用第一个闲置动画当待机 */
 function splitIdlePool() {
-  const base = state.idlePool.filter((a) => BASE_IDLE_PATTERN.test(a.name));
-  const actions = state.idlePool.filter((a) => !BASE_IDLE_PATTERN.test(a.name));
+  const chosen = state.rhythm.basePool;
+  const isBase = chosen.length > 0
+    ? (a) => chosen.includes(a.name)
+    : (a) => BASE_IDLE_PATTERN.test(a.name);
+  const base = state.idlePool.filter(isBase);
+  const actions = state.idlePool.filter((a) => !isBase(a));
   if (base.length > 0) return { base, actions };
   return { base: state.idlePool.slice(0, 1), actions: state.idlePool.slice(1) };
 }
@@ -555,20 +575,43 @@ function playRandomIdle() {
     state.currentIdleFile = anim.name;
     playVideo(anim.path, true);
   }
-  if (actions.length > 0) scheduleIdleAction(actions);
+  // 关闭动作动画时，有多个待机动画就隔一段时间换一个待机
+  const next = state.rhythm.actionEnabled && actions.length > 0 ? actions : (base.length > 1 ? base : []);
+  if (next.length > 0) scheduleIdleSwitch(next, next === actions);
 }
 
-function scheduleIdleAction(actions) {
-  const gap = IDLE_ACTION_GAP_MIN + Math.random() * (IDLE_ACTION_GAP_MAX - IDLE_ACTION_GAP_MIN);
+function scheduleIdleSwitch(candidates, isAction) {
+  const { actionGapMin, actionGapMax } = state.rhythm;
+  const gap = (actionGapMin + Math.random() * (actionGapMax - actionGapMin)) * 1000;
+  const token = state.idleActionToken;
   state.autoIdleTimer = setTimeout(() => {
     state.autoIdleTimer = null;
     // 正在点击 / 拖拽时不打断，稍后再试
     if (state.isPlayingClick || state.isPlayingDrag || state.isDragging) {
-      scheduleIdleAction(actions);
+      scheduleIdleSwitch(candidates, isAction);
       return;
     }
-    playIdleAction(pickAnimation(actions));
+    // 等当前这一遍待机动画播完再切换，避免画面在中途跳变
+    afterCurrentClip(token, () => {
+      if (isAction) playIdleAction(pickAnimation(candidates));
+      else playRandomIdle();
+    });
   }, gap);
+}
+
+/** 让正在循环的片段播完这一遍后执行 next（期间被点击 / 拖拽打断则放弃） */
+function afterCurrentClip(token, next) {
+  const video = elements.video;
+  if (video.paused || video.ended || !video.src) { next(); return; }
+  video.loop = false;
+  const done = () => {
+    video.removeEventListener('ended', done);
+    clearTimeout(guard);
+    if (state.idleActionToken !== token) return;
+    next();
+  };
+  const guard = setTimeout(done, IDLE_CLIP_MAX_MS);
+  video.addEventListener('ended', done);
 }
 
 /** 完整播放一遍动作动画，结束后回到待机（被点击 / 拖拽打断时由它们负责回到待机） */
@@ -585,7 +628,7 @@ function playIdleAction(anim) {
     if (state.idleActionToken !== token) return;
     playRandomIdle();
   };
-  const guard = setTimeout(finish, IDLE_ACTION_MAX_MS);
+  const guard = setTimeout(finish, IDLE_CLIP_MAX_MS);
   video.addEventListener('ended', finish);
 }
 

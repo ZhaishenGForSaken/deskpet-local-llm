@@ -487,6 +487,33 @@ body.platform-mac #title-btns {
   font-family: 'SF Mono', 'Consolas', monospace;
 }
 
+/* 闲置动画的角色：待机 / 动作 */
+.anim-role {
+  padding: 3px 6px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.anim-role.base {
+  border-color: var(--accent);
+  color: var(--accent-hover);
+}
+
+/* 播放节奏：最短 ~ 最长 间隔输入 */
+.rhythm-gap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rhythm-gap input {
+  width: 90px;
+}
+
 .anim-item-preview {
   padding: 4px 8px;
   border: none;

@@ -14,7 +14,8 @@ const state = {
   },
   availableAnimations: { idle: [], click: [] },
   selectedIdle: [],
-  selectedClick: []
+  selectedClick: [],
+  basePool: []          // 被设为「待机」的闲置动画（为空时按文件名自动判断）
 };
 
 // ====== DOM 元素 ======
@@ -72,6 +73,10 @@ function cacheElements() {
   elements.btnSelectAllIdle = document.getElementById('btn-select-all-idle');
   elements.btnSelectAllClick = document.getElementById('btn-select-all-click');
   elements.btnSaveAnimations = document.getElementById('btn-save-animations');
+  elements.rhythmActionEnabled = document.getElementById('rhythm-action-enabled');
+  elements.rhythmGapMin = document.getElementById('rhythm-gap-min');
+  elements.rhythmGapMax = document.getElementById('rhythm-gap-max');
+  elements.rhythmHint = document.getElementById('rhythm-hint');
 
   // 宠物设置
   elements.petOpacity = document.getElementById('pet-opacity');
@@ -122,6 +127,7 @@ async function loadAllConfig() {
     state.availableAnimations = animations;
     state.selectedIdle = config.animations.idlePool || [];
     state.selectedClick = config.animations.clickPool || [];
+    state.basePool = config.animations.basePool || [];
   } catch (e) {
     console.error('加载配置失败:', e);
   }
@@ -322,9 +328,36 @@ function populateForms() {
   elements.bubbleOffsetY.value = String(bubbleY);
   elements.bubbleYValue.textContent = Math.round(bubbleY) + 'px';
 
+  // 播放节奏
+  const animations = state.config.animations || {};
+  elements.rhythmActionEnabled.checked = animations.actionEnabled !== false;
+  elements.rhythmGapMin.value = Number(animations.actionGapMin) || 20;
+  elements.rhythmGapMax.value = Number(animations.actionGapMax) || 45;
+  updateRhythmHint();
+
   // 动画列表
   renderAnimationList('idle');
   renderAnimationList('click');
+}
+
+/** 没有手动指定待机动画时，按文件名自动判断（与桌宠 pet.js 保持一致） */
+const BASE_IDLE_PATTERN = /待机|呼吸|东张西望/;
+
+/** 某个闲置动画当前是否为「待机」 */
+function isBaseAnimation(name) {
+  return state.basePool.length > 0 ? state.basePool.includes(name) : BASE_IDLE_PATTERN.test(name);
+}
+
+/** 节奏提示：统计当前待机 / 动作数量，并提醒没有待机动画的情况 */
+function updateRhythmHint() {
+  if (!elements.rhythmHint) return;
+  const idle = (state.availableAnimations.idle || [])
+    .filter((a) => state.selectedIdle.length === 0 || state.selectedIdle.includes(a.name));
+  const base = idle.filter((a) => isBaseAnimation(a.name)).length;
+  const actions = idle.length - base;
+  const warn = base === 0 && idle.length > 0 ? '⚠️ 没有启用的待机动画，将用第一个闲置动画当待机。' : '';
+  elements.rhythmHint.textContent =
+    `${warn}当前启用：待机 ${base} 个 · 动作 ${actions} 个。间隔越短桌宠越活跃（3 ~ 3600 秒）`;
 }
 
 /**
@@ -345,6 +378,13 @@ function renderAnimationList(type) {
 
   listEl.innerHTML = animations.map(anim => {
     const isChecked = selected.length === 0 || selected.includes(anim.name);
+    const base = type === 'idle' && isBaseAnimation(anim.name);
+    const role = type === 'idle'
+      ? `<select class="anim-role ${base ? 'base' : ''}" data-name="${escapeAttr(anim.name)}" title="待机：循环常驻；动作：偶尔完整播放一次">
+           <option value="base" ${base ? 'selected' : ''}>待机</option>
+           <option value="action" ${base ? '' : 'selected'}>动作</option>
+         </select>`
+      : '';
     return `
       <div class="anim-item">
         <input type="checkbox"
@@ -352,6 +392,7 @@ function renderAnimationList(type) {
                data-type="${escapeAttr(type)}"
                ${isChecked ? 'checked' : ''}>
         <span class="anim-item-name">🎬 ${escapeHtml(anim.name)}</span>
+        ${role}
         <button class="anim-item-preview" data-path="${escapeAttr(anim.path)}">预览</button>
       </div>
     `;
@@ -360,6 +401,17 @@ function renderAnimationList(type) {
   // 绑定复选框事件
   listEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.addEventListener('change', () => updateSelectedAnimations(type));
+  });
+
+  // 待机 / 动作 角色切换：一旦手动改过，就把当前全部角色固化成名单
+  listEl.querySelectorAll('select.anim-role').forEach((select) => {
+    select.addEventListener('change', () => {
+      state.basePool = Array.from(listEl.querySelectorAll('select.anim-role'))
+        .filter((s) => s.value === 'base')
+        .map((s) => s.dataset.name);
+      select.classList.toggle('base', select.value === 'base');
+      updateRhythmHint();
+    });
   });
 }
 
@@ -373,6 +425,7 @@ function updateSelectedAnimations(type) {
 
   if (type === 'idle') {
     state.selectedIdle = selected;
+    updateRhythmHint();
   } else {
     state.selectedClick = selected;
   }
@@ -526,14 +579,26 @@ async function testApiConnection() {
  * 保存动画配置
  */
 async function saveAnimationConfig() {
+  let gapMin = Number(elements.rhythmGapMin.value);
+  let gapMax = Number(elements.rhythmGapMax.value);
+  if (!Number.isFinite(gapMin)) gapMin = 20;
+  if (!Number.isFinite(gapMax)) gapMax = 45;
   const config = {
     idlePool: state.selectedIdle,
-    clickPool: state.selectedClick
+    clickPool: state.selectedClick,
+    basePool: state.basePool,
+    actionEnabled: elements.rhythmActionEnabled.checked,
+    actionGapMin: gapMin,
+    actionGapMax: gapMax
   };
 
   try {
     await window.settingsAPI.setAnimationConfig(config);
-    showToast('✅ 动画配置已保存');
+    // 回显主进程清洗后的值（例如超出范围、最短大于最长）
+    const saved = await window.settingsAPI.getAnimationConfig();
+    elements.rhythmGapMin.value = saved.actionGapMin;
+    elements.rhythmGapMax.value = saved.actionGapMax;
+    showToast('✅ 动画配置已保存，桌宠已按新节奏播放');
   } catch (e) {
     showToast('❌ 保存失败: ' + e.message);
   }

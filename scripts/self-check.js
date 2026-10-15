@@ -443,6 +443,19 @@ check('自定义语句写盘前会被清洗（去空行 / 折叠换行 / 去重 
   assertEqual(normalizeCustomPhrases(many).length, MAX_PHRASE_COUNT, '条数未限制');
 });
 
+check('动画节奏配置写盘前会被清洗（限范围 / 最短不大于最长 / 名单只留字符串）', () => {
+  const { normalizeAnimationConfig } = require('../src/shared/store');
+  const a = normalizeAnimationConfig({ actionGapMin: 90, actionGapMax: 10, actionEnabled: 0, basePool: ['a.webm', 1, null] });
+  assertEqual(a.actionGapMin, 10, '最短与最长应交换');
+  assertEqual(a.actionGapMax, 90, '最短与最长应交换');
+  assertEqual(a.actionEnabled, false, '开关转布尔');
+  assertEqual(JSON.stringify(a.basePool), '["a.webm"]', '名单过滤');
+  const b = normalizeAnimationConfig({ actionGapMin: 0, actionGapMax: 99999 });
+  assertEqual(b.actionGapMin, 3, '下限');
+  assertEqual(b.actionGapMax, 3600, '上限');
+  assertEqual(JSON.stringify(normalizeAnimationConfig({ idlePool: ['x.webm'] })), '{"idlePool":["x.webm"]}', '未提供的字段不写');
+});
+
 check('右键菜单：贴着鼠标展开，且任何情况下都完整落在屏幕内', () => {
   const workArea = { x: 0, y: 0, width: 1440, height: 900 };
   const size = { width: 200, height: 260 };
