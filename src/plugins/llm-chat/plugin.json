@@ -2,19 +2,45 @@
   "id": "llm-chat",
   "name": "AI 对话",
   "version": "2.0.0",
-  "description": "连接本地部署的大模型（Ollama / LM Studio / llama.cpp / vLLM 等 OpenAI 兼容服务）：多会话、流式回复、思考过程展示、桌宠闲聊，历史仅保存在本地。",
+  "description": "连接本地部署的大模型（Ollama / LM Studio / llama.cpp / vLLM 等 OpenAI 兼容服务）：多会话、桌面小对话窗、流式回复、思考过程展示、桌宠闲聊，历史仅保存在本地。",
   "author": "isKage",
   "main": "main.js",
   "preload": "preload.js",
   "enabled": true,
   "contributes": {
     "petMenu": [
-      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 },
-      { "command": "pet-talk", "label": "说句话", "icon": "🗨️", "order": 11 }
+      {
+        "command": "mini-chat",
+        "label": "快速提问",
+        "icon": "⚡",
+        "order": 9
+      },
+      {
+        "command": "open-chat",
+        "label": "AI 对话",
+        "icon": "💬",
+        "order": 10
+      },
+      {
+        "command": "pet-talk",
+        "label": "说句话",
+        "icon": "🗨️",
+        "order": 11
+      }
     ],
     "trayMenu": [
-      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 },
-      { "command": "pet-talk", "label": "让桌宠说句话", "icon": "🗨️", "order": 11 }
+      {
+        "command": "open-chat",
+        "label": "AI 对话",
+        "icon": "💬",
+        "order": 10
+      },
+      {
+        "command": "pet-talk",
+        "label": "让桌宠说句话",
+        "icon": "🗨️",
+        "order": 11
+      }
     ],
     "settings": {
       "title": "AI 对话",
@@ -121,9 +147,21 @@
         }
       ],
       "actions": [
-        { "id": "models", "label": "📋 获取模型列表", "style": "secondary" },
-        { "id": "test", "label": "🔗 测试对话", "style": "secondary" },
-        { "id": "talk", "label": "🗨️ 让桌宠说句话", "style": "secondary" }
+        {
+          "id": "models",
+          "label": "📋 获取模型列表",
+          "style": "secondary"
+        },
+        {
+          "id": "test",
+          "label": "🔗 测试对话",
+          "style": "secondary"
+        },
+        {
+          "id": "talk",
+          "label": "🗨️ 让桌宠说句话",
+          "style": "secondary"
+        }
       ]
     }
   }

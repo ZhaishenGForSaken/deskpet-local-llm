@@ -14,6 +14,7 @@
 const { requestChat, testConnection, listModels, resolveChatEndpoint } = require('./chat-client');
 const { createConversationStore } = require('./conversations');
 const { createChatWindow, getChatWindow } = require('./chat-window');
+const { createMiniWindow, resizeMini, closeMini, isMiniVisible } = require('./mini-window');
 
 /** 默认系统提示词 */
 const DEFAULT_SYSTEM_PROMPT =
@@ -122,11 +123,11 @@ function replyPreview(text) {
   return plain.length > REPLY_PREVIEW_LENGTH ? `${plain.slice(0, REPLY_PREVIEW_LENGTH)}…` : plain;
 }
 
-/** 对话窗口不在眼前（没开 / 最小化 / 隐藏 / 没有焦点）时，把回复同步成桌宠气泡，点一下打开对话窗口 */
+/** 对话窗口与小对话窗都不在眼前时，把回复同步成桌宠气泡，点一下打开对话窗口 */
 function syncReplyToPet(ctx, config, content) {
   if (!config.syncReply) return;
   const win = getChatWindow();
-  const inFront = win && win.isVisible() && !win.isMinimized() && win.isFocused();
+  const inFront = (win && win.isVisible() && !win.isMinimized() && win.isFocused()) || isMiniVisible();
   if (inFront) return;
   const preview = replyPreview(content);
   const fn = ctx.host && ctx.host.showPetBubble;
@@ -206,6 +207,10 @@ module.exports = {
       }
       if (command === 'pet-talk') {
         return petTalk(ctx, { manual: true });
+      }
+      if (command === 'mini-chat') {
+        createMiniWindow(ctx);
+        return;
       }
       ctx.warn(`未知命令: ${command}`);
     });
@@ -295,6 +300,16 @@ module.exports = {
       const win = windowOf(ctx, event);
       if (win) win.close();
       return { success: !!win };
+    });
+
+    // ---------- 桌面小对话窗 ----------
+    ctx.ipc.on('mini-resize', (event, height) => resizeMini(ctx, height));
+    ctx.ipc.handle('mini-close', () => { closeMini(); return { success: true }; });
+    // 展开：打开完整对话窗口（同一个活跃会话），并收起小窗
+    ctx.ipc.handle('mini-expand', () => {
+      createChatWindow(ctx);
+      closeMini();
+      return { success: true };
     });
 
     // ---------- 渲染进程：打开本体设置页 ----------

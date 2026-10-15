@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld('chatAPI', {
   // 打开本体设置页
   openHostSettings: () => ipcRenderer.invoke(channel('open-host-settings')),
 
+  // 桌面小对话窗
+  resizeMini: (height) => ipcRenderer.send(channel('mini-resize'), height),
+  closeMini: () => ipcRenderer.invoke(channel('mini-close')),
+  expandMini: () => ipcRenderer.invoke(channel('mini-expand')),
+  onMiniFocus: (callback) => ipcRenderer.on(channel('mini-focus'), () => callback()),
+
   // 事件
   onStreamChunk: (callback) => ipcRenderer.on(channel('stream-chunk'), (event, data) => callback(data)),
   onStreamDone: (callback) => ipcRenderer.on(channel('stream-done'), (event, data) => callback(data)),

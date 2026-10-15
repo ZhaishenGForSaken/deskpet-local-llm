@@ -152,7 +152,7 @@ async function main() {
   ).catch((e) => ({ error: e.message }));
 
   record('右键菜单页面：本体项 + 插件项都渲染，并按内容回报自适应尺寸',
-    menuDom.items === 6 && menuDom.labels.includes('AI 对话') && menuDom.labels.includes('说句话') && menuDom.labels.includes('退出') &&
+    menuDom.items === 7 && menuDom.labels.includes('AI 对话') && menuDom.labels.includes('说句话') && menuDom.labels.includes('快速提问') && menuDom.labels.includes('退出') &&
     reportedMenuSize && reportedMenuSize.width > 60 && reportedMenuSize.height > 100,
     `items=${menuDom.items} size=${JSON.stringify(reportedMenuSize)} labels=${JSON.stringify(menuDom.labels)}`);
 
@@ -332,7 +332,7 @@ async function main() {
     ).catch(() => 0);
 
     record('右键菜单窗口：按菜单内容自适应尺寸，并贴在鼠标位置',
-      opened.success === true && !!expected && itemCount === 6 && menuShown === 1 &&
+      opened.success === true && !!expected && itemCount === 7 && menuShown === 1 &&
       normalBounds.width === expected.width && normalBounds.height === expected.height &&
       normalBounds.x === expected.x && normalBounds.y === expected.y,
       `size=${JSON.stringify(normalSize)} bounds=${JSON.stringify(normalBounds)} items=${itemCount}`);

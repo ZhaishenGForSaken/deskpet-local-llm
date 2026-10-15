@@ -146,7 +146,29 @@ function setupEventListeners() {
   });
 }
 
+/** 其它窗口（桌面小对话窗）发了消息：窗口回到前台时重新加载，保持同一份会话 */
+async function reloadFromStore() {
+  if (state.isStreaming) return;
+  try {
+    state.conversations = (await window.chatAPI.listConversations()) || [];
+    const active = await window.chatAPI.getActiveConversation();
+    state.activeConvId = active ? active.id : null;
+    state.messages = (active && active.messages) || [];
+    renderConvList();
+    renderMessages();
+  } catch (e) {
+    console.error('同步对话失败:', e);
+  }
+}
+
 function setupStreamListeners() {
+  window.addEventListener('focus', reloadFromStore);
+
+  window.chatAPI.onStreamDone((data) => {
+    // 别的窗口发起的请求完成了，且正好是当前会话：刷新消息
+    if (data && data.requestId !== state.requestId && data.conversationId === state.activeConvId) reloadFromStore();
+  });
+
   window.chatAPI.onStreamChunk((data) => {
     if (!data || data.requestId !== state.requestId) return;
     if (data.kind === 'reasoning') state.streamingReasoning += data.chunk || '';
@@ -543,31 +565,6 @@ function renderThinking(text, open) {
     `<div class="thinking-body">${escapeHtml(text)}</div></details>`;
 }
 
-/** 轻量 Markdown 渲染（先转义，再处理代码块） */
-function renderMarkdown(text) {
-  if (!text) return '';
-  const codeBlocks = [];
-  let html = escapeHtml(text);
-
-  html = html.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, (match, code) => {
-    const index = codeBlocks.push(`<pre><code>${code.replace(/\n$/, '')}</code></pre>`) - 1;
-    return `\u0000${index}\u0000`;
-  });
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
-  html = html.replace(/\n/g, '<br>');
-  html = html.replace(/\u0000(\d+)\u0000/g, (match, index) => codeBlocks[Number(index)] || '');
-  return html;
-}
-
-function escapeHtml(text) {
-  return String(text == null ? '' : text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+// renderMarkdown / escapeHtml 见 markdown.js（与小对话窗共用）
 
 document.addEventListener('DOMContentLoaded', init);

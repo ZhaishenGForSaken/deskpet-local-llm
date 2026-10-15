@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>快速提问 - DeskPet</title>
+  <link rel="stylesheet" href="mini.css">
+</head>
+<body>
+  <div id="card">
+    <div id="header">
+      <span class="title">⚡ 快速提问</span>
+      <span id="model" class="model" title="当前模型（在完整对话窗口底部可切换）">-</span>
+      <span class="spacer"></span>
+      <button id="btn-new" class="icon-btn" title="新话题">🆕</button>
+      <button id="btn-expand" class="icon-btn" title="展开到完整对话窗口">📌</button>
+      <button id="btn-close" class="icon-btn" title="关闭（Esc）">✕</button>
+    </div>
+    <div id="messages"></div>
+    <div id="input-row">
+      <textarea id="input" rows="1" placeholder="问点什么… Enter 发送 · Esc 关闭" title="Enter 发送 · Shift+Enter 换行 · Esc 关闭"></textarea>
+      <button id="btn-send" class="send-btn" title="发送">➤</button>
+    </div>
+  </div>
+  <script src="markdown.js"></script>
+  <script src="mini.js"></script>
+</body>
+</html>

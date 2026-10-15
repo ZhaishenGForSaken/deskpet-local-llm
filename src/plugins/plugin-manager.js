@@ -422,6 +422,13 @@ function createPluginManager(options = {}) {
             catch (e) { return false; }
           }
           : null,
+        /** 桌宠窗口位置 { x, y, width, height, workArea }，桌宠隐藏时为 null（可选服务） */
+        getPetBounds: typeof hostServices.getPetBounds === 'function'
+          ? () => {
+            try { return hostServices.getPetBounds() || null; }
+            catch (e) { return null; }
+          }
+          : null,
         /** 系统键鼠空闲秒数（可选服务） */
         getIdleSeconds: typeof hostServices.getIdleSeconds === 'function'
           ? () => {

@@ -5,7 +5,7 @@
  */
 
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, nativeTheme, nativeImage, powerMonitor } = electron;
+const { app, BrowserWindow, ipcMain, nativeTheme, nativeImage, powerMonitor, screen } = electron;
 const path = require('path');
 const {
   createPetWindow, getPetWindow, setPetGeometryListener
@@ -171,6 +171,13 @@ async function loadPlugins() {
         },
         // 系统键鼠空闲秒数
         getIdleSeconds: () => powerMonitor.getSystemIdleTime(),
+        // 桌宠窗口位置与所在屏幕的工作区（桌宠隐藏时返回 null）
+        getPetBounds: () => {
+          const pet = getPetWindow();
+          if (!pet || pet.isDestroyed() || !pet.isVisible()) return null;
+          const bounds = pet.getBounds();
+          return { ...bounds, workArea: screen.getDisplayMatching(bounds).workArea };
+        },
         // 打开本体的设置窗口
         openSettings: () => { createSettingsWindow(); return true; }
       }
