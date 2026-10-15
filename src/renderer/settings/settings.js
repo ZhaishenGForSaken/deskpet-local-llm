@@ -1,6 +1,6 @@
 /**
  * 设置窗口逻辑
- * 处理 API 余额配置、动画选择、宠物设置等的可视化配置
+ * 处理本地模型服务配置、动画选择、宠物设置等的可视化配置
  * 插件设置面板（contributes.settings）由插件系统动态追加
  */
 
@@ -56,7 +56,11 @@ function cacheElements() {
   // API 配置
   elements.apiEndpoint = document.getElementById('api-endpoint');
   elements.apiKey = document.getElementById('api-key');
-  elements.balanceEndpoint = document.getElementById('balance-endpoint');
+  elements.llmProvider = document.getElementById('llm-provider');
+  elements.llmModel = document.getElementById('llm-model');
+  elements.llmModelList = document.getElementById('llm-model-list');
+  elements.llmModelHint = document.getElementById('llm-model-hint');
+  elements.btnRefreshModels = document.getElementById('btn-refresh-models');
   elements.toggleApiKey = document.getElementById('toggle-api-key');
   elements.btnTestApi = document.getElementById('btn-test-api');
   elements.btnSaveApi = document.getElementById('btn-save-api');
@@ -96,7 +100,7 @@ function cacheElements() {
   elements.btnPreviewBubble = document.getElementById('btn-preview-bubble');
   elements.btnResetBubble = document.getElementById('btn-reset-bubble');
 
-  // 余额气泡
+  // 模型状态气泡
   elements.balanceEnabled = document.getElementById('balance-enabled');
   elements.balanceInterval = document.getElementById('balance-interval');
   elements.balancePhrases = document.getElementById('balance-phrases');
@@ -169,8 +173,20 @@ function setupEventListeners() {
   // 保存 API 配置
   elements.btnSaveApi.addEventListener('click', () => saveApiConfig(true));
 
-  // 测试 API 连接（查询余额）
+  // 测试本地模型服务连接
   elements.btnTestApi.addEventListener('click', testApiConnection);
+
+  // 切换服务类型：自动填入默认地址（自定义类型保留用户填写的地址）
+  elements.llmProvider.addEventListener('change', async () => {
+    const providers = await getProviders();
+    const preset = providers[elements.llmProvider.value];
+    if (preset && preset.baseUrl) elements.apiEndpoint.value = preset.baseUrl;
+    elements.llmModelList.innerHTML = '';
+    refreshModelList({ quiet: true });
+  });
+
+  // 从服务读取模型列表
+  elements.btnRefreshModels.addEventListener('click', () => refreshModelList());
 
   // 宠物透明度
   elements.petOpacity.addEventListener('input', () => {
@@ -259,15 +275,17 @@ function setupEventListeners() {
 function populateForms() {
   const { llm = {}, balance = {}, pet = {} } = state.config || {};
 
-  // API 配置
+  // 本地模型服务
+  elements.llmProvider.value = llm.provider || 'ollama';
   elements.apiEndpoint.value = llm.apiEndpoint || '';
   elements.apiKey.value = llm.apiKey || '';
-  elements.balanceEndpoint.value = llm.balanceEndpoint || '';
+  elements.llmModel.value = llm.model || '';
+  refreshModelList({ quiet: true });
 
-  // 余额气泡
+  // 模型状态气泡
   elements.balanceEnabled.checked = balance.enabled !== false;
   elements.balanceInterval.value = Number.isFinite(Number(balance.intervalMinutes))
-    ? Number(balance.intervalMinutes) : 30;
+    ? Number(balance.intervalMinutes) : 0;
   // 双击自定义语句（每行一句）
   elements.balancePhrases.value = Array.isArray(balance.customPhrases)
     ? balance.customPhrases.join('\n')
@@ -390,21 +408,70 @@ async function addAnimationFile(type) {
   }
 }
 
+let providersCache = null;
+
+/** 预设服务列表（主进程提供，缓存一份） */
+async function getProviders() {
+  if (!providersCache) {
+    try { providersCache = (await window.settingsAPI.getLLMProviders()) || {}; } catch (e) { providersCache = {}; }
+  }
+  return providersCache;
+}
+
+/** 当前表单里的服务配置（未保存也能用来读取模型列表） */
+function readLLMForm() {
+  return {
+    provider: elements.llmProvider.value,
+    apiEndpoint: elements.apiEndpoint.value.trim(),
+    apiKey: elements.apiKey.value.trim(),
+    model: elements.llmModel.value.trim()
+  };
+}
+
 /**
- * 保存 API 配置
+ * 从服务读取模型列表，填进模型输入框的下拉建议
+ * @param {{ quiet?: boolean }} [options] quiet 为 true 时失败不提示（例如打开设置页时服务还没启动）
+ */
+async function refreshModelList(options = {}) {
+  const hint = elements.llmModelHint;
+  if (!options.quiet) hint.textContent = '⏳ 正在读取模型列表...';
+  try {
+    const result = await window.settingsAPI.listLocalModels(readLLMForm());
+    if (!result || !result.success) throw new Error((result && result.error) || '未知错误');
+    const models = result.models || [];
+    elements.llmModelList.innerHTML = '';
+    for (const name of models) {
+      const option = document.createElement('option');
+      option.value = name;
+      elements.llmModelList.appendChild(option);
+    }
+    if (!models.length) {
+      hint.textContent = '服务在线，但还没有模型。Ollama 可在终端执行：ollama pull qwen2.5:7b';
+    } else {
+      hint.textContent = `✅ 读取到 ${models.length} 个模型，点击输入框可选择：${models.slice(0, 6).join('、')}${models.length > 6 ? ' …' : ''}`;
+      // 还没选模型时，默认填入第一个可对话的模型
+      if (!elements.llmModel.value.trim() && !options.quiet) {
+        elements.llmModel.value = models.find((m) => !/embed/i.test(m)) || models[0];
+      }
+    }
+  } catch (e) {
+    hint.textContent = options.quiet
+      ? '点 🔄 从服务读取已下载的模型，也可以直接输入模型名（如 qwen2.5:7b）'
+      : `❌ 读取失败：${e.message}`;
+  }
+}
+
+/**
+ * 保存本地模型服务配置
  * @param {boolean} [notify] 是否弹出保存成功提示
  * @returns {Promise<boolean>} 是否保存成功
  */
 async function saveApiConfig(notify = true) {
-  const config = {
-    apiEndpoint: elements.apiEndpoint.value.trim(),
-    balanceEndpoint: elements.balanceEndpoint.value.trim(),
-    apiKey: elements.apiKey.value.trim()
-  };
+  const config = readLLMForm();
 
   try {
     await window.settingsAPI.setLLMConfig(config);
-    if (notify) showToast('✅ API 配置已保存');
+    if (notify) showToast('✅ 本地模型配置已保存');
     return true;
   } catch (e) {
     showToast('❌ 保存失败: ' + e.message);
@@ -413,7 +480,7 @@ async function saveApiConfig(notify = true) {
 }
 
 /**
- * 测试 API 连接（通过查询余额验证 Key 是否可用）
+ * 测试本地模型服务连接（读取模型列表并检查所选模型是否存在）
  */
 async function testApiConnection() {
   const resultEl = elements.apiTestResult;
@@ -432,10 +499,19 @@ async function testApiConnection() {
   try {
     const response = await window.settingsAPI.getApiBalance();
     if (response && response.success) {
-      // response.text 形如 "💰 API 余额\n¥110.00"，这里只取余额明细
-      const detail = String(response.text || '').split('\n').slice(1).join(' / ').trim();
-      resultEl.textContent = detail ? `✅ 连接成功！当前余额：${detail}` : '✅ 连接成功！API Key 可用';
-      resultEl.className = 'test-result success';
+      const data = response.data || {};
+      const models = data.models || [];
+      if (!data.model) {
+        resultEl.textContent = `⚠️ 已连接 ${data.providerName}，但服务上还没有模型。请先下载一个模型（如 ollama pull qwen2.5:7b）`;
+        resultEl.className = 'test-result error';
+      } else if (data.modelAvailable === false) {
+        resultEl.textContent = `⚠️ 已连接 ${data.providerName}（${data.latencyMs}ms），但找不到模型「${data.model}」。可用模型：${models.join('、')}`;
+        resultEl.className = 'test-result error';
+      } else {
+        resultEl.textContent = `✅ 已连接 ${data.providerName}（${data.latencyMs}ms），将使用模型「${data.model}」，服务上共 ${models.length} 个模型`;
+        resultEl.className = 'test-result success';
+      }
+      refreshModelList({ quiet: true });
     } else {
       resultEl.textContent = '❌ 连接失败: ' + ((response && response.error) || '未知错误');
       resultEl.className = 'test-result error';
@@ -522,13 +598,13 @@ function readCustomPhrases() {
     .filter((line) => line.length > 0);
 }
 
-/** 根据余额气泡开关更新自定义语句的提示与样式 */
+/** 根据模型状态气泡开关更新自定义语句的提示与样式 */
 function updatePhraseHint() {
   const enabled = elements.balanceEnabled.checked;
   elements.balancePhrases.classList.toggle('inactive', enabled);
   elements.balancePhrasesHint.textContent = enabled
-    ? '当前启用了余额气泡：双击桌宠展示余额，这些语句暂不生效'
-    : '未启用余额气泡：双击桌宠会从这里随机展示一句；留空则使用内置问候语';
+    ? '当前启用了状态气泡：双击桌宠展示模型状态，这些语句暂不生效'
+    : '未启用状态气泡：双击桌宠会从这里随机展示一句；留空则使用内置问候语';
 }
 
 /** 预览一句自定义语句（随机挑一句，未保存也能看效果） */
@@ -547,7 +623,7 @@ function previewPhrase() {
 }
 
 /**
- * 保存宠物设置 + 余额气泡设置
+ * 保存宠物设置 + 状态气泡设置
  */
 async function savePetConfig() {
   const config = {

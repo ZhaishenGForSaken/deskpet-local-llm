@@ -411,6 +411,13 @@ function createPluginManager(options = {}) {
             catch (e) { return null; }
           }
           : () => null,
+        /** 让桌宠弹出一个文字气泡（可选服务）：{ text, duration } */
+        showPetBubble: typeof hostServices.showPetBubble === 'function'
+          ? (payload) => {
+            try { return hostServices.showPetBubble(payload) !== false; }
+            catch (e) { return false; }
+          }
+          : null,
         /** 打开本体的设置窗口（可选服务，返回是否成功） */
         openSettings: typeof hostServices.openSettings === 'function'
           ? () => {

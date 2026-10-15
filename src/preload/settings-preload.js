@@ -8,12 +8,16 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('settingsAPI', {
   // 获取所有配置
   getAllConfig: () => ipcRenderer.invoke('get-all-config'),
-  // 获取 / 更新 API 配置（仅用于余额查询）
+  // 获取 / 更新本地模型服务配置
   getLLMConfig: () => ipcRenderer.invoke('get-llm-config'),
   setLLMConfig: (config) => ipcRenderer.invoke('set-llm-config', config),
-  // 查询 API 余额（同时用于测试 API Key 是否可用）
+  // 预设的本地推理服务（Ollama / LM Studio / ...）
+  getLLMProviders: () => ipcRenderer.invoke('get-llm-providers'),
+  // 读取模型列表（可传入未保存的表单值）
+  listLocalModels: (config) => ipcRenderer.invoke('list-local-models', config),
+  // 检测本地模型服务状态（同时用于测试连接）
   getApiBalance: () => ipcRenderer.invoke('get-api-balance'),
-  // 获取 / 更新余额气泡配置
+  // 获取 / 更新状态气泡配置
   getBalanceConfig: () => ipcRenderer.invoke('get-balance-config'),
   setBalanceConfig: (config) => ipcRenderer.invoke('set-balance-config', config),
   // 气泡窗口的大小 / 位置

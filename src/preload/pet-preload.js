@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('petAPI', {
   getBalanceConfig: () => ipcRenderer.invoke('get-balance-config'),
   getAppPath: () => ipcRenderer.invoke('get-app-path'),
 
-  // API 余额
+  // 本地模型状态
   getApiBalance: () => ipcRenderer.invoke('get-api-balance'),
 
   // 气泡（由独立的气泡窗口显示）
@@ -45,11 +45,11 @@ contextBridge.exposeInMainWorld('petAPI', {
   onConfigChanged: (callback) => {
     ipcRenderer.on('config-changed', (event, config) => callback(config));
   },
-  // 监听：余额配置变更
+  // 监听：模型状态配置变更
   onBalanceConfigChanged: (callback) => {
     ipcRenderer.on('balance-config-changed', (event, config) => callback(config));
   },
-  // 监听：手动触发余额展示（托盘菜单）
+  // 监听：手动触发模型状态展示（托盘菜单）
   onShowBalance: (callback) => {
     ipcRenderer.on('show-balance', () => callback());
   },

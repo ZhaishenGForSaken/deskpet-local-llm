@@ -94,7 +94,7 @@ function positionBubble() {
 
 /**
  * 显示气泡
- * @param {Object} payload { kind: 'text'|'balance', text, data, duration }
+ * @param {Object} payload { kind: 'text'|'status', text, data, duration }
  */
 function showBubble(payload) {
   // 宠物被隐藏时不弹气泡（例如托盘里点了「隐藏桌宠」）

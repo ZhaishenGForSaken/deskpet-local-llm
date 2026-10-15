@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI 对话 - DeskLLMPet</title>
+  <title>AI 对话 - DeskPet</title>
   <link rel="stylesheet" href="chat.css">
 </head>
 <body class="platform-win">
   <div id="title-bar">
     <div class="title-left">
       <span class="title-icon">💬</span>
-      <span class="title-text">DeskLLMPet AI 对话</span>
+      <span class="title-text">DeskPet AI 对话</span>
     </div>
     <div class="title-right" id="title-btns">
       <button class="title-btn" id="btn-minimize" title="最小化">
@@ -35,7 +35,8 @@
 
     <main id="chat-area">
       <div id="key-warning" class="key-warning hidden">
-        <span>⚠️ 还没有配置 API Key，对话无法发送。</span>
+        <span id="key-warning-text">⚠️ 连接不到本地模型服务。</span>
+        <button id="btn-retry-models" class="key-warning-btn">重试</button>
         <button id="btn-open-settings" class="key-warning-btn">去设置</button>
       </div>
       <div id="messages-container"></div>
@@ -47,7 +48,9 @@
           </button>
         </div>
         <div class="input-hint">
-          <span>模型: <strong id="current-model">-</strong></span>
+          <span id="provider-name">本地模型</span>
+          <select id="model-select" class="model-select" title="切换模型"></select>
+          <strong id="current-model" class="hidden">-</strong>
           <span class="hint-divider">|</span>
           <span id="input-tip">Enter 发送 · Shift+Enter 换行</span>
         </div>

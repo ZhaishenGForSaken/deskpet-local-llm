@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('chatAPI', {
   // 配置
   getConfig: () => ipcRenderer.invoke(channel('get-config')),
 
+  // 模型
+  listModels: () => ipcRenderer.invoke(channel('list-models')),
+  setModel: (model) => ipcRenderer.invoke(channel('set-model'), model),
+
   // 会话
   listConversations: () => ipcRenderer.invoke(channel('list-conversations')),
   getActiveConversation: () => ipcRenderer.invoke(channel('get-active-conversation')),

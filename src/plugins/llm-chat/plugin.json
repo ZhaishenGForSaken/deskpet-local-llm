@@ -1,47 +1,49 @@
 {
   "id": "llm-chat",
   "name": "AI 对话",
-  "version": "1.0.0",
-  "description": "独立的 AI 对话窗口：多会话管理、流式回复、历史本地保存。支持 DeepSeek / OpenAI 等兼容接口。",
+  "version": "2.0.0",
+  "description": "连接本地部署的大模型（Ollama / LM Studio / llama.cpp / vLLM 等 OpenAI 兼容服务）：多会话、流式回复、思考过程展示、桌宠闲聊，历史仅保存在本地。",
   "author": "isKage",
   "main": "main.js",
   "preload": "preload.js",
   "enabled": true,
   "contributes": {
     "petMenu": [
-      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 }
+      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 },
+      { "command": "pet-talk", "label": "说句话", "icon": "🗨️", "order": 11 }
     ],
     "trayMenu": [
-      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 }
+      { "command": "open-chat", "label": "AI 对话", "icon": "💬", "order": 10 },
+      { "command": "pet-talk", "label": "让桌宠说句话", "icon": "🗨️", "order": 11 }
     ],
     "settings": {
       "title": "AI 对话",
       "icon": "💬",
-      "description": "本插件自带独立的配置与对话历史，与「API 配置」中的余额查询互不影响；留空的项目会回退使用本体的 API Key / 地址。",
+      "description": "连接信息默认使用「本地模型」页的配置；这里留空的项目会自动回退，只在想让对话单独用另一个服务或模型时才需要填写。",
       "fields": [
         {
-          "key": "apiKey",
-          "label": "API Key",
-          "type": "password",
-          "default": "",
-          "placeholder": "sk-xxxxxxxxxxxxxxxx",
-          "hint": "留空则回退使用「API 配置」里的 Key；仅保存在本地"
-        },
-        {
           "key": "apiEndpoint",
-          "label": "API 地址",
+          "label": "服务地址（可选）",
           "type": "text",
           "default": "",
-          "placeholder": "https://api.deepseek.com",
-          "hint": "可填 base 地址（自动补 /v1/chat/completions），也可直接填完整的 /chat/completions 地址；留空回退使用「API 配置」里的地址"
+          "placeholder": "留空使用「本地模型」页的地址",
+          "hint": "可填 base 地址（如 http://127.0.0.1:11434/v1），也可直接填完整的 /chat/completions 地址"
+        },
+        {
+          "key": "apiKey",
+          "label": "API Key（可选）",
+          "type": "password",
+          "default": "",
+          "placeholder": "本地服务一般不需要",
+          "hint": "留空则使用「本地模型」页的 Key；仅保存在本地"
         },
         {
           "key": "model",
-          "label": "模型",
+          "label": "模型（可选）",
           "type": "text",
-          "default": "deepseek-chat",
-          "placeholder": "deepseek-chat",
-          "hint": "DeepSeek 可选 deepseek-chat / deepseek-reasoner"
+          "default": "",
+          "placeholder": "留空使用「本地模型」页选择的模型",
+          "hint": "也可以在对话窗口底部直接切换；点下方「获取模型列表」查看可用模型名"
         },
         {
           "key": "temperature",
@@ -57,11 +59,11 @@
           "key": "maxTokens",
           "label": "单次回复上限 max_tokens",
           "type": "number",
-          "default": 2048,
+          "default": 4096,
           "min": 1,
           "max": 65536,
           "step": 1,
-          "hint": "限制单次回复的最大 token 数"
+          "hint": "推理模型（如 DeepSeek-R1 / Qwen3）思考过程也计入该上限，建议不低于 4096"
         },
         {
           "key": "stream",
@@ -71,16 +73,43 @@
           "hint": "开启后回复逐字显示，关闭则一次性返回"
         },
         {
+          "key": "showThinking",
+          "label": "显示思考过程",
+          "type": "boolean",
+          "default": true,
+          "hint": "推理模型的 <think> 内容会以可折叠区块展示；关闭后只显示最终回答"
+        },
+        {
           "key": "systemPrompt",
           "label": "系统提示词",
           "type": "textarea",
-          "default": "你是 DeskLLMPet 的桌面宠物助手，名字叫「大肥鱼」。回答简洁、友好、有条理；能用列表就用列表。",
+          "default": "你是住在用户电脑桌面上的宠物助手，名字叫「小肥鱼」。回答简洁、友好、有条理；能用列表就用列表。",
           "rows": 3,
           "hint": "定义 AI 的身份与回答风格"
+        },
+        {
+          "key": "chatterMinutes",
+          "label": "桌宠闲聊间隔（分钟）",
+          "type": "number",
+          "default": 0,
+          "min": 0,
+          "max": 1440,
+          "step": 1,
+          "hint": "每隔 N 分钟让模型生成一句话，由桌宠用气泡说出来；0 表示关闭（右键菜单「说句话」可随时手动触发）"
+        },
+        {
+          "key": "chatterPrompt",
+          "label": "闲聊提示词",
+          "type": "textarea",
+          "default": "你是住在用户电脑桌面上的小宠物。请用一句不超过 30 个字的中文，对主人说一句俏皮、温暖的话（可以提醒喝水、休息、夸夸主人等），只输出这句话本身。",
+          "rows": 3,
+          "hint": "决定桌宠闲聊时说话的风格"
         }
       ],
       "actions": [
-        { "id": "test", "label": "🔗 测试连接", "style": "secondary" }
+        { "id": "models", "label": "📋 获取模型列表", "style": "secondary" },
+        { "id": "test", "label": "🔗 测试对话", "style": "secondary" },
+        { "id": "talk", "label": "🗨️ 让桌宠说句话", "style": "secondary" }
       ]
     }
   }

@@ -57,7 +57,7 @@ function buildMenu() {
       click: () => togglePetWindow()
     },
     {
-      label: '立即查看 API 余额',
+      label: '查看本地模型状态',
       click: () => {
         const petWin = getPetWindow();
         if (!petWin) return;
@@ -87,15 +87,15 @@ function buildMenu() {
     },
     { type: 'separator' },
     {
-      label: '关于 DeskLLMPet',
+      label: '关于 DeskPet',
       click: () => {
         const { dialog, shell } = require('electron');
         dialog.showMessageBox({
           type: 'info',
-          title: '关于 DeskLLMPet',
-          message: `DeskLLMPet v${app.getVersion()}`,
-          detail: '一款支持 API 余额气泡、可插件化扩展的桌面宠物应用。\n\n基于 Electron 构建，支持 Windows 和 macOS。\n\n🔗 GitHub: https://github.com/isKage/desk-llm-pet',
-          buttons: ['确定', '访问 GitHub'],
+          title: '关于 DeskPet',
+          message: `DeskPet v${app.getVersion()}`,
+          detail: '一款连接本地部署大模型（Ollama / LM Studio / llama.cpp / vLLM 等）的桌面宠物应用。\n\n基于开源项目 desk-llm-pet 改造，Electron 构建，支持 Windows 和 macOS。\n\n🔗 原项目: https://github.com/isKage/desk-llm-pet',
+          buttons: ['确定', '访问原项目'],
           defaultId: 0,
           cancelId: 0
         }).then(({ response }) => {
@@ -128,7 +128,7 @@ function createTray() {
     tray = new Tray(createDefaultIcon());
   }
 
-  tray.setToolTip('DeskLLMPet - 桌面宠物 | 单击切换 | 右键菜单');
+  tray.setToolTip('DeskPet - 桌面宠物 | 单击切换 | 右键菜单');
 
   if (isMac) {
     // macOS：左键单击 → 切换桌宠显示

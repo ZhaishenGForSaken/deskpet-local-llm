@@ -1,6 +1,6 @@
 /**
  * LLM 对话窗口样式（插件自带）
- * DeepSeek 风格，支持多对话管理
+ * 简洁风格，支持多对话管理
  */
 
 /* ====== CSS 变量 ====== */
@@ -346,4 +346,54 @@ body.platform-mac #title-btns { display: none; }
 @media (max-width: 600px) {
   #sidebar { display: none; }
   .message-content { max-width: 85%; }
+}
+
+/* ====== 模型下拉框 / 思考过程 ====== */
+.model-select {
+  max-width: 220px;
+  padding: 1px 4px;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.model-select option {
+  color: #222;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.thinking {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid rgba(127, 127, 127, 0.45);
+  border-radius: 4px;
+  background: rgba(127, 127, 127, 0.08);
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.thinking summary {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+
+.thinking-body {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.message-model {
+  font-size: 11px;
+  opacity: 0.5;
+  margin-left: 6px;
 }

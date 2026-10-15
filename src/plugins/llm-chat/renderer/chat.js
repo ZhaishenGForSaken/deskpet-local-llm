@@ -17,6 +17,8 @@ const state = {
   isStreaming: false,
   requestId: null,
   streamingText: '',
+  streamingReasoning: '',
+  models: [],
   renameTargetId: null
 };
 
@@ -35,6 +37,7 @@ async function init() {
   await loadConversations();
 
   renderConfigInfo();
+  loadModels();
   renderConvList();
   renderMessages();
   console.log('💬 AI 对话插件窗口已就绪');
@@ -49,6 +52,10 @@ function cacheElements() {
   elements.btnClose = document.getElementById('btn-close');
   elements.convList = document.getElementById('conv-list');
   elements.currentModel = document.getElementById('current-model');
+  elements.modelSelect = document.getElementById('model-select');
+  elements.providerName = document.getElementById('provider-name');
+  elements.keyWarningText = document.getElementById('key-warning-text');
+  elements.btnRetryModels = document.getElementById('btn-retry-models');
   elements.inputTip = document.getElementById('input-tip');
   elements.keyWarning = document.getElementById('key-warning');
   elements.btnOpenSettings = document.getElementById('btn-open-settings');
@@ -88,9 +95,18 @@ function setupEventListeners() {
   elements.btnClose?.addEventListener('click', () => window.chatAPI.closeWindow());
   elements.btnNewConv?.addEventListener('click', newConversation);
   elements.btnSend.addEventListener('click', sendMessage);
+  elements.btnRetryModels?.addEventListener('click', loadModels);
+  elements.modelSelect?.addEventListener('change', async () => {
+    try {
+      state.config = await window.chatAPI.setModel(elements.modelSelect.value);
+      renderConfigInfo();
+    } catch (e) {
+      console.error('切换模型失败:', e);
+    }
+  });
   elements.btnOpenSettings?.addEventListener('click', async () => {
     const result = await window.chatAPI.openHostSettings();
-    if (!result || !result.success) alert('请右键点击桌宠 → 设置 → AI 对话');
+    if (!result || !result.success) alert('请右键点击桌宠 → 设置 → 本地模型');
   });
 
   elements.messageInput.addEventListener('keydown', (e) => {
@@ -133,7 +149,8 @@ function setupEventListeners() {
 function setupStreamListeners() {
   window.chatAPI.onStreamChunk((data) => {
     if (!data || data.requestId !== state.requestId) return;
-    state.streamingText += data.chunk || '';
+    if (data.kind === 'reasoning') state.streamingReasoning += data.chunk || '';
+    else state.streamingText += data.chunk || '';
     updateStreamingMessage();
   });
 
@@ -155,17 +172,56 @@ function setupStreamListeners() {
   });
 
   window.chatAPI.onConfigChanged((config) => {
+    const endpointChanged = !state.config || state.config.endpoint !== config.endpoint;
     state.config = config;
     renderConfigInfo();
+    if (endpointChanged) loadModels();
   });
 }
 
-// ====== 渲染：配置信息 ======
+// ====== 渲染：配置信息 / 模型列表 ======
 function renderConfigInfo() {
   const config = state.config || {};
-  if (elements.currentModel) elements.currentModel.textContent = config.model || '未配置';
-  const missing = !config.hasApiKey;
-  elements.keyWarning?.classList.toggle('hidden', !missing);
+  if (elements.currentModel) elements.currentModel.textContent = config.model || '自动';
+  if (elements.providerName) elements.providerName.textContent = `${config.providerName || '本地模型'}:`;
+  renderModelSelect();
+}
+
+/** 从本地服务读取模型列表；失败时在顶部提示服务没启动 */
+async function loadModels() {
+  let result = null;
+  try {
+    result = await window.chatAPI.listModels();
+  } catch (e) {
+    result = { success: false, error: e.message, models: [] };
+  }
+  state.models = (result && result.models) || [];
+  const offline = !result || !result.success;
+  if (elements.keyWarningText) {
+    elements.keyWarningText.textContent = offline
+      ? `⚠️ ${(result && result.error) || '连接不到本地模型服务'}`
+      : '⚠️ 服务在线，但还没有下载任何模型（Ollama 可执行 ollama pull qwen2.5:7b）';
+  }
+  elements.keyWarning?.classList.toggle('hidden', !offline && state.models.length > 0);
+  renderModelSelect();
+}
+
+function renderModelSelect() {
+  const select = elements.modelSelect;
+  if (!select) return;
+  const config = state.config || {};
+  // 只有在对话窗口里单独选过模型时才算「覆盖」，否则跟随「本地模型」设置
+  const override = config.modelFrom === 'plugin' ? (config.model || '') : '';
+  const followed = config.modelFrom === 'host'
+    ? config.model
+    : (state.models.find((m) => !/embed/i.test(m)) || state.models[0] || '');
+  const names = [...state.models];
+  if (override && !names.includes(override)) names.unshift(override);
+  const autoLabel = followed ? `默认（${followed}）` : '默认';
+  select.innerHTML = [`<option value="">${escapeHtml(autoLabel)}</option>`]
+    .concat(names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`))
+    .join('');
+  select.value = override;
 }
 
 // ====== 会话管理 ======
@@ -287,6 +343,7 @@ async function sendMessage() {
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   state.requestId = requestId;
   state.streamingText = '';
+  state.streamingReasoning = '';
 
   // 首次发送时移除欢迎页，避免它把消息挤到屏幕外
   elements.messagesContainer.querySelector('.welcome-message')?.remove();
@@ -318,17 +375,26 @@ function updateStreamingMessage() {
   const node = document.getElementById('streaming-message');
   if (!node) return;
   const content = node.querySelector('.message-content');
-  if (content) content.innerHTML = renderMarkdown(state.streamingText);
+  if (!content) return;
+  const thinking = state.streamingReasoning && showThinking()
+    ? renderThinking(state.streamingReasoning, !state.streamingText)
+    : '';
+  const waiting = state.streamingReasoning && !state.streamingText && !showThinking()
+    ? '<em>思考中…</em>'
+    : '';
+  content.innerHTML = thinking + waiting + renderMarkdown(state.streamingText);
   scrollToBottom();
 }
 
 function finishStreaming(data) {
   const node = document.getElementById('streaming-message');
-  const text = state.streamingText || (data && data.message ? data.message.content : '');
+  const saved = data && data.message;
+  const text = (saved && saved.content) || state.streamingText;
+  const reasoning = (saved && saved.reasoning) || state.streamingReasoning;
   node?.remove();
 
-  if (text) {
-    appendMessage({ role: 'assistant', content: text, timestamp: Date.now() });
+  if (text || reasoning) {
+    appendMessage({ role: 'assistant', content: text, reasoning, model: saved && saved.model, timestamp: Date.now() });
   } else if (data && data.canceled) {
     appendNotice('已停止生成');
   }
@@ -339,6 +405,7 @@ function finishStreaming(data) {
   }
 
   state.streamingText = '';
+  state.streamingReasoning = '';
   state.requestId = null;
   setSending(false);
   scrollToBottom();
@@ -349,9 +416,10 @@ function handleStreamError(error) {
   const div = document.createElement('div');
   div.className = 'message assistant error';
   div.innerHTML = '<div class="message-avatar">⚠️</div><div class="message-content">' +
-    `${escapeHtml(String(error || '未知错误'))}<br><small>请检查「设置 → AI 对话」中的配置</small></div>`;
+    `${escapeHtml(String(error || '未知错误'))}<br><small>请确认本地模型服务已启动，并检查「设置 → 本地模型」中的配置</small></div>`;
   elements.messagesContainer.appendChild(div);
   state.streamingText = '';
+  state.streamingReasoning = '';
   state.requestId = null;
   setSending(false);
   scrollToBottom();
@@ -378,12 +446,13 @@ function buildMessageNode(msg) {
   div.innerHTML =
     `<div class="message-avatar">${avatar}</div>` +
     '<div style="flex:1;min-width:0">' +
-      `<div class="message-content">${renderMarkdown(msg.content)}</div>` +
+      `<div class="message-content">${msg.reasoning && showThinking() ? renderThinking(msg.reasoning, false) : ''}${renderMarkdown(msg.content)}</div>` +
       '<div class="message-actions">' +
         '<button class="message-action-btn" title="复制">' +
         '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
         '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>' +
         `<span>复制</span></button><span class="message-time">${time}</span>` +
+        (msg.model ? `<span class="message-model">${escapeHtml(msg.model)}</span>` : '') +
       '</div>' +
     '</div>';
   return div;
@@ -395,8 +464,8 @@ function renderMessages() {
     elements.messagesContainer.innerHTML = `
       <div class="welcome-message">
         <div class="welcome-icon">🐾</div>
-        <h2>欢迎使用 DeskLLMPet AI 对话</h2>
-        <p>点击左侧「新对话」开始聊天，历史对话会自动保存在本地</p>
+        <h2>和你的本地大模型聊聊吧</h2>
+        <p>对话由本机（或局域网）上的模型生成，历史只保存在本地；底部可以切换模型</p>
         <div class="quick-actions">
           <button class="quick-btn" data-prompt="用一句话介绍你自己">👋 自我介绍</button>
           <button class="quick-btn" data-prompt="写一首关于编程的短诗">✍️ 写首诗</button>
@@ -462,6 +531,16 @@ function scrollToBottom() {
   setTimeout(() => {
     elements.messagesContainer.scrollTop = elements.messagesContainer.scrollHeight;
   }, 50);
+}
+
+function showThinking() {
+  return !state.config || state.config.showThinking !== false;
+}
+
+/** 推理模型的思考过程：可折叠区块（生成中默认展开） */
+function renderThinking(text, open) {
+  return `<details class="thinking"${open ? ' open' : ''}><summary>💭 思考过程</summary>` +
+    `<div class="thinking-body">${escapeHtml(text)}</div></details>`;
 }
 
 /** 轻量 Markdown 渲染（先转义，再处理代码块） */

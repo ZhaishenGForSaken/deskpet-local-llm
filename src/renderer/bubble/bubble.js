@@ -15,11 +15,12 @@ const elements = {
 
 let hideTimer = null;
 
-/** 货币符号 */
-function currencySymbol(currency) {
-  if (currency === 'CNY') return '¥';
-  if (currency === 'USD') return '$';
-  return currency ? `${currency} ` : '';
+/** 字节数 -> 1.2 GB */
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return '';
+  const gb = n / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(n / 1024 ** 2)} MB`;
 }
 
 /** 渲染普通文字气泡 */
@@ -29,30 +30,33 @@ function renderText(text) {
   elements.text.textContent = text;
 }
 
-/** 渲染余额卡片 */
+/** 渲染本地模型状态卡片 */
 function renderCard(data) {
-  const balances = (data && Array.isArray(data.balances)) ? data.balances : [];
-  const available = !data || data.isAvailable !== false;
-  const primary = balances[0] || { currency: 'CNY', totalBalance: '0.00' };
+  const models = (data && Array.isArray(data.models)) ? data.models : [];
+  const hasModel = !!(data && data.model);
 
   elements.text.classList.add('hidden');
   elements.card.classList.remove('hidden');
 
   elements.value.innerHTML = '';
-  const symbolEl = document.createElement('span');
-  symbolEl.className = 'currency';
-  symbolEl.textContent = currencySymbol(primary.currency);
-  const amountEl = document.createElement('span');
-  amountEl.className = 'amount';
-  amountEl.textContent = primary.totalBalance;
-  elements.value.appendChild(symbolEl);
-  elements.value.appendChild(amountEl);
+  elements.value.classList.add('model-name');
+  const dot = document.createElement('span');
+  dot.className = 'status-dot';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'amount';
+  nameEl.textContent = hasModel ? data.model : '还没有模型';
+  elements.value.appendChild(dot);
+  elements.value.appendChild(nameEl);
 
   elements.sub.innerHTML = '';
-  const items = [];
-  if (Number(primary.toppedUpBalance) > 0) items.push(`充值 ${currencySymbol(primary.currency)}${primary.toppedUpBalance}`);
-  if (Number(primary.grantedBalance) > 0) items.push(`赠送 ${currencySymbol(primary.currency)}${primary.grantedBalance}`);
-  for (const extra of balances.slice(1)) items.push(`${extra.currency} ${extra.totalBalance}`);
+  const items = [`共 ${models.length} 个模型`];
+  if (Number.isFinite(Number(data && data.latencyMs))) items.push(`${data.latencyMs} ms`);
+  if (data && Array.isArray(data.loaded)) {
+    items.push(data.loaded.length
+      ? `已加载 ${data.loaded.map((m) => `${m.name}${formatBytes(m.sizeVram) ? ` (${formatBytes(m.sizeVram)})` : ''}`).join('、')}`
+      : '暂未加载到显存');
+  }
+  if (hasModel && data.modelAvailable === false) items.push('⚠️ 服务上找不到该模型');
   for (const item of items) {
     const span = document.createElement('span');
     span.className = 'item';
@@ -61,9 +65,10 @@ function renderCard(data) {
   }
   elements.sub.style.display = items.length ? '' : 'none';
 
-  elements.title.textContent = available ? 'API 余额' : '余额不足';
-  elements.badge.textContent = available ? 'DeepSeek' : '需充值';
-  elements.card.classList.toggle('warn', !available);
+  const ok = hasModel && data.modelAvailable !== false;
+  elements.title.textContent = '本地模型在线';
+  elements.badge.textContent = (data && data.providerName) || '本地';
+  elements.card.classList.toggle('warn', !ok);
 }
 
 /** 测量并回报内容尺寸（主进程据此调整窗口大小与位置） */
@@ -86,7 +91,7 @@ window.bubbleAPI.onShow((payload) => {
   const scale = Number(payload.scale) > 0 ? Number(payload.scale) : 1;
   document.documentElement.style.setProperty('--bubble-scale', String(scale));
 
-  if (payload.kind === 'balance' && payload.data) {
+  if (payload.kind === 'status' && payload.data) {
     renderCard(payload.data);
   } else {
     renderText(payload.text || '');

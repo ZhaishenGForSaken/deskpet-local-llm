@@ -262,21 +262,24 @@ check('插件 IPC 通道已命名空间化注册', () => {
 });
 
 check('插件设置可读写并按类型裁剪', () => {
-  const saved = host.setPluginSettings('llm-chat', { temperature: 99, stream: false, model: 'deepseek-reasoner' });
+  const saved = host.setPluginSettings('llm-chat', { temperature: 99, stream: false, model: 'qwen3:8b' });
   assert(saved.success, '保存失败');
   assertEqual(saved.values.temperature, 2, 'temperature 应被裁剪到上限 2');
   assertEqual(saved.values.stream, false, 'stream 应保存为 false');
-  assertEqual(host.getPluginSettings('llm-chat').model, 'deepseek-reasoner', 'model 读取不一致');
-  assertEqual(host.getPluginSettings('llm-chat').maxTokens, 2048, '未提供的字段应保留默认值');
+  assertEqual(host.getPluginSettings('llm-chat').model, 'qwen3:8b', 'model 读取不一致');
+  assertEqual(host.getPluginSettings('llm-chat').maxTokens, 4096, '未提供的字段应保留默认值');
 });
 
-await checkAsync('设置动作：未声明动作被拒绝，缺 Key 时给出明确提示', async () => {
+await checkAsync('设置动作：未声明动作被拒绝，本地服务离线时给出明确提示', async () => {
   const unknown = await host.runSettingsAction('llm-chat', 'nope', {});
   assertEqual(unknown.success, false, '未声明动作应失败');
 
-  const noKey = await host.runSettingsAction('llm-chat', 'test', { apiKey: '' });
-  assertEqual(noKey.success, false, '缺少 API Key 时应失败');
-  assert(/API Key/.test(noKey.error || ''), `错误文案不明确: ${noKey.error}`);
+  const offline = await host.runSettingsAction('llm-chat', 'test', { apiEndpoint: 'http://127.0.0.1:9/v1', model: '' });
+  assertEqual(offline.success, false, '服务离线时应失败');
+  assert(/连接不到本地模型服务/.test(offline.error || ''), `错误文案不明确: ${offline.error}`);
+
+  const models = await host.runSettingsAction('llm-chat', 'models', { apiEndpoint: 'http://127.0.0.1:9/v1' });
+  assertEqual(models.success, false, '服务离线时获取模型列表应失败');
 });
 
 await checkAsync('命令 open-chat 创建插件窗口并注入 preload', async () => {
@@ -294,7 +297,8 @@ await checkAsync('命令 open-chat 创建插件窗口并注入 preload', async (
   assertEqual(electron._windows.length, before + 1, '重复打开不应创建新窗口');
 });
 
-await checkAsync('缺失 API Key 时发送消息走错误事件（不发起网络请求）', async () => {
+await checkAsync('本地服务离线时发送消息走错误事件', async () => {
+  host.setPluginSettings('llm-chat', { apiEndpoint: 'http://127.0.0.1:9/v1', model: '' });
   const win = electron._windows[electron._windows.length - 1];
   win.webContents.sent.length = 0;
 
@@ -303,13 +307,15 @@ await checkAsync('缺失 API Key 时发送消息走错误事件（不发起网�
     content: '你好',
     conversationId: ''
   });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  for (let i = 0; i < 100 && !win.webContents.sent.some((m) => m.channel === 'plugin:llm-chat:stream-error'); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
 
   const sent = win.webContents.sent.map((m) => m.channel);
   assert(sent.includes('plugin:llm-chat:conversation-updated'), `缺少会话更新事件: ${sent.join(',')}`);
   const errorEvent = win.webContents.sent.find((m) => m.channel === 'plugin:llm-chat:stream-error');
   assert(errorEvent, `缺少错误事件: ${sent.join(',')}`);
-  assert(/API Key/.test(errorEvent.payload.error || ''), '错误文案未提示配置 API Key');
+  assert(/连接不到本地模型服务/.test(errorEvent.payload.error || ''), `错误文案未提示服务离线: ${errorEvent.payload.error}`);
 });
 
 check('未注册命令返回失败而不是抛异常', async () => {
@@ -342,15 +348,41 @@ await checkAsync('deactivateAll 注销通道并关闭插件窗口', async () => 
 
 console.log('\n[3/6] 插件内部逻辑');
 
-const { resolveChatEndpoint, parseSseLine, createSseParser } = require('../src/plugins/llm-chat/chat-client');
+const {
+  resolveChatEndpoint, resolveModelsEndpoint, parseSseLine, createSseParser, createThinkSplitter, splitThink
+} = require('../src/plugins/llm-chat/chat-client');
+const { resolveBaseUrl, pickModel } = require('../src/shared/local-llm');
 const { createConversationStore } = require('../src/plugins/llm-chat/conversations');
 
 check('resolveChatEndpoint 规范化各种写法', () => {
-  assertEqual(resolveChatEndpoint(''), 'https://api.deepseek.com/v1/chat/completions', '空地址');
-  assertEqual(resolveChatEndpoint('https://api.deepseek.com'), 'https://api.deepseek.com/v1/chat/completions', 'base 地址');
-  assertEqual(resolveChatEndpoint('https://api.deepseek.com/v1/'), 'https://api.deepseek.com/v1/chat/completions', '带 /v1');
+  assertEqual(resolveChatEndpoint(''), 'http://127.0.0.1:11434/v1/chat/completions', '空地址默认本机 Ollama');
+  assertEqual(resolveChatEndpoint('http://127.0.0.1:11434'), 'http://127.0.0.1:11434/v1/chat/completions', 'base 地址');
+  assertEqual(resolveChatEndpoint('http://127.0.0.1:1234/v1/'), 'http://127.0.0.1:1234/v1/chat/completions', '带 /v1');
   assertEqual(resolveChatEndpoint('https://api.openai.com/v1/chat/completions'), 'https://api.openai.com/v1/chat/completions', '完整端点');
-  assertEqual(resolveChatEndpoint('localhost:11434/v1'), 'https://localhost:11434/v1/chat/completions', '自动补协议');
+  assertEqual(resolveChatEndpoint('localhost:11434/v1'), 'http://localhost:11434/v1/chat/completions', '本地服务自动补 http');
+  assertEqual(resolveModelsEndpoint('http://127.0.0.1:8080'), 'http://127.0.0.1:8080/v1/models', '模型列表端点');
+});
+
+check('本体服务地址解析：预设 / 补 /v1 / 去掉 chat/completions', () => {
+  assertEqual(resolveBaseUrl({ provider: 'lmstudio', apiEndpoint: '' }), 'http://127.0.0.1:1234/v1', '预设地址');
+  assertEqual(resolveBaseUrl({ apiEndpoint: '192.168.1.10:11434' }), 'http://192.168.1.10:11434/v1', '补协议与 /v1');
+  assertEqual(resolveBaseUrl({ apiEndpoint: 'http://h:8000/v1/chat/completions' }), 'http://h:8000/v1', '完整端点');
+  assertEqual(pickModel('', ['nomic-embed-text', 'qwen2.5:7b']), 'qwen2.5:7b', '自动选择跳过向量模型');
+  assertEqual(pickModel('llama3', ['qwen2.5:7b']), 'llama3', '已配置的模型优先');
+});
+
+check('思考过程分流：<think> 标签跨 chunk、reasoning 字段', () => {
+  const out = { content: '', reasoning: '' };
+  const splitter = createThinkSplitter((kind, text) => { out[kind] += text; });
+  for (const piece of ['\n<th', 'ink>先想', '想</th', 'ink>\n\n答案是 ', '<b>42</b>']) splitter.push(piece);
+  splitter.flush();
+  assertEqual(out.reasoning, '先想想', '思考内容');
+  assertEqual(out.content, '答案是 <b>42</b>', '正文内容');
+  assertEqual(splitThink('没有思考').content, '没有思考', '普通回复原样保留');
+  assertEqual(splitThink('<think>只有思考').reasoning, '只有思考', '未闭合的 think');
+  const line = parseSseLine('data: {"choices":[{"delta":{"reasoning_content":"嗯"}}]}');
+  assertEqual(line.reasoning, '嗯', 'reasoning_content 字段');
+  assertEqual(parseSseLine('data: {"choices":[{"delta":{"reasoning":"哦"}}]}').reasoning, '哦', 'reasoning 字段');
 });
 
 check('SSE 解析：跨 chunk 拼接 + 忽略噪声行', () => {
@@ -465,7 +497,7 @@ check('桌宠页面不再自带会被窗口裁掉的右键菜单', () => {
   assert(/openPetMenu/.test(readFile('src/renderer/pet/pet.js')), 'pet.js 未改为请求独立菜单窗口');
 });
 
-check('桌宠：单击只播动画，双击才弹气泡（余额或自定义语句）', () => {
+check('桌宠：单击只播动画，双击才弹气泡（模型状态或自定义语句）', () => {
   const pet = readFile('src/renderer/pet/pet.js');
   assert(/const DOUBLE_CLICK_MS\s*=\s*\d+/.test(pet), '缺少双击判定阈值');
   assert(/function handlePetClick\(/.test(pet), '缺少单击 / 双击分发入口');
@@ -489,9 +521,9 @@ check('发布信息一致：版本号 / 发布说明文件 / 安装包名对得�
   const notes = readFile(notesRel);
   assert(notes.includes(`v${pkg.version}`), `${notesRel} 里没有出现 v${pkg.version}`);
   for (const asset of [
-    `DeskLLMPet-${pkg.version}-arm64.dmg`,
-    `DeskLLMPet-${pkg.version}.dmg`,
-    `DeskLLMPet.Setup.${pkg.version}.exe`
+    `DeskPet-${pkg.version}-arm64.dmg`,
+    `DeskPet-${pkg.version}.dmg`,
+    `DeskPet.Setup.${pkg.version}.exe`
   ]) {
     assert(notes.includes(asset), `${notesRel} 未提到安装包 ${asset}`);
   }

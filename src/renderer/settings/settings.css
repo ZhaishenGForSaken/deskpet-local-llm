@@ -241,7 +241,7 @@ body.platform-mac #title-btns {
   box-shadow: 0 0 0 3px var(--accent-light);
 }
 
-/* 当前不生效的自定义语句输入框（余额气泡开着时）稍微淡一点 */
+/* 当前不生效的自定义语句输入框（模型状态气泡开着时）稍微淡一点 */
 .form-group textarea.inactive {
   opacity: 0.65;
 }

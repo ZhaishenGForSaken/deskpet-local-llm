@@ -1,7 +1,7 @@
 /**
  * 对话数据管理（插件私有）
  * 数据存放在插件自己的存储里（<userData>/plugins/llm-chat/data.json），
- * 与本体 DeskLLMPet 的配置完全隔离
+ * 与本体 DeskPet 的配置完全隔离
  */
 
 /** 单个对话保存的消息上限（防止无限增长撑爆配置文件） */
@@ -22,11 +22,15 @@ function inferTitle(content) {
 
 function normalizeMessage(message) {
   const role = message && ['user', 'assistant', 'system'].includes(message.role) ? message.role : 'user';
-  return {
+  const normalized = {
     role,
     content: String((message && message.content) || ''),
     timestamp: Number.isFinite(Number(message && message.timestamp)) ? Number(message.timestamp) : Date.now()
   };
+  // 推理模型的思考过程与所用模型（可选，仅用于展示）
+  if (message && message.reasoning) normalized.reasoning = String(message.reasoning);
+  if (message && message.model) normalized.model = String(message.model);
+  return normalized;
 }
 
 /**

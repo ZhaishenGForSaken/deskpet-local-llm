@@ -28,7 +28,7 @@ function createSettingsWindow() {
     height: 650,
     minWidth: 600,
     minHeight: 500,
-    title: 'DeskLLMPet - 设置',
+    title: 'DeskPet - 设置',
     backgroundColor: '#1a1a2e',
     skipTaskbar: false,
     resizable: true,

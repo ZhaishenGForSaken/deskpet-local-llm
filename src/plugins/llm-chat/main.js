@@ -3,18 +3,35 @@
  * ============================================================================
  * 通过宿主 ctx 获得全部能力（IPC / 存储 / 窗口 / 设置），
  * 不直接依赖本体的任何模块，删除本目录即可完全下线该功能。
+ *
+ * 面向本地部署的大模型（Ollama / LM Studio / llama.cpp / vLLM 等）：
+ *   - 未指定模型时自动使用服务端的第一个可对话模型
+ *   - 对话窗口内可直接切换模型
+ *   - 推理模型的思考过程单独保存、可折叠展示
+ *   - 桌宠闲聊：让模型生成一句话，用桌宠的气泡说出来
  */
 
-const { requestChat, testConnection, resolveChatEndpoint } = require('./chat-client');
+const { requestChat, testConnection, listModels, resolveChatEndpoint } = require('./chat-client');
 const { createConversationStore } = require('./conversations');
 const { createChatWindow } = require('./chat-window');
 
 /** 默认系统提示词 */
 const DEFAULT_SYSTEM_PROMPT =
-  '你是 DeskLLMPet 的桌面宠物助手，名字叫「大肥鱼」。回答简洁、友好、有条理；能用列表就用列表。';
+  '你是住在用户电脑桌面上的宠物助手，名字叫「小肥鱼」。回答简洁、友好、有条理；能用列表就用列表。';
+
+/** 桌宠闲聊默认提示词 */
+const DEFAULT_CHATTER_PROMPT =
+  '你是住在用户电脑桌面上的小宠物。请用一句不超过 30 个字的中文，对主人说一句俏皮、温暖的话（可以提醒喝水、休息、夸夸主人等），只输出这句话本身。';
+
+/** 闲聊气泡最长字数 */
+const CHATTER_MAX_LENGTH = 80;
 
 /** requestId -> { cancel } */
 const pending = new Map();
+
+/** 闲聊定时器与进行中的标记 */
+let chatterTimer = null;
+let chatterBusy = false;
 
 // ============================================================================
 // 配置解析
@@ -42,18 +59,34 @@ function buildConfig(ctx, override) {
 
   const apiEndpoint = String(merged.apiEndpoint || shared.apiEndpoint || '').trim();
   const apiKey = String(merged.apiKey || shared.apiKey || '').trim();
-  const model = String(merged.model || 'deepseek-chat').trim() || 'deepseek-chat';
+  const model = String(merged.model || shared.model || '').trim();
   const systemPrompt = String(merged.systemPrompt || '').trim() || DEFAULT_SYSTEM_PROMPT;
 
   return {
     apiEndpoint,
     apiKey,
     model,
+    providerName: String(shared.providerName || '本地模型'),
     maxTokens: merged.maxTokens,
     temperature: merged.temperature,
     stream: merged.stream !== false,
-    systemPrompt
+    showThinking: merged.showThinking !== false,
+    systemPrompt,
+    chatterMinutes: Number(merged.chatterMinutes) || 0,
+    chatterPrompt: String(merged.chatterPrompt || '').trim() || DEFAULT_CHATTER_PROMPT
   };
+}
+
+/**
+ * 没有指定模型时，自动使用服务端的第一个可对话模型
+ * @returns {Promise<Object>} 补全了 model 的配置
+ */
+async function withModel(config) {
+  if (config.model) return config;
+  const models = await listModels(config);
+  const model = models.find((m) => !/embed/i.test(m)) || models[0] || '';
+  if (!model) throw new Error('本地模型服务上还没有可用模型，请先下载（如 ollama pull qwen2.5:7b）');
+  return { ...config, model };
 }
 
 /** 暴露给渲染进程的配置（不含 API Key 明文） */
@@ -67,16 +100,18 @@ function publicConfig(ctx) {
     endpoint = resolveChatEndpoint(cfg.apiEndpoint);
   } catch (e) { /* 地址非法时原样展示，便于用户排查 */ }
 
-  const keyFrom = String(stored.apiKey || '').trim()
+  const modelFrom = String(stored.model || '').trim()
     ? 'plugin'
-    : (String(shared.apiKey || '').trim() ? 'host' : 'none');
+    : (String(shared.model || '').trim() ? 'host' : 'auto');
 
   return {
     model: cfg.model,
+    modelFrom,
+    providerName: cfg.providerName,
     endpoint,
     stream: cfg.stream,
-    hasApiKey: !!cfg.apiKey,
-    keyFrom
+    showThinking: cfg.showThinking,
+    hasApiKey: !!cfg.apiKey
   };
 }
 
@@ -114,17 +149,38 @@ module.exports = {
       activeConversationId: null
     }));
 
-    // ---------- 打开窗口（来自桌宠右键菜单 / 托盘菜单） ----------
+    // ---------- 菜单命令（来自桌宠右键菜单 / 托盘菜单） ----------
     ctx.onCommand((command) => {
       if (command === 'open-chat') {
         createChatWindow(ctx);
         return;
+      }
+      if (command === 'pet-talk') {
+        return petTalk(ctx, { manual: true });
       }
       ctx.warn(`未知命令: ${command}`);
     });
 
     // ---------- 渲染进程：读取配置 ----------
     ctx.ipc.handle('get-config', () => publicConfig(ctx));
+
+    // ---------- 渲染进程：模型列表 / 切换模型 ----------
+    ctx.ipc.handle('list-models', async () => {
+      const config = buildConfig(ctx);
+      try {
+        const models = await listModels(config);
+        return { success: true, models, current: config.model };
+      } catch (e) {
+        return { success: false, error: e.message, models: [], current: config.model };
+      }
+    });
+
+    ctx.ipc.handle('set-model', (event, model) => {
+      ctx.settings.set({ ...(ctx.settings.get() || {}), model: String(model || '').trim() });
+      const config = publicConfig(ctx);
+      ctx.ipc.send('config-changed', config);
+      return config;
+    });
 
     // ---------- 渲染进程：会话管理 ----------
     ctx.ipc.handle('list-conversations', () => conversations.list());
@@ -203,32 +259,56 @@ module.exports = {
       return { success: false, error: '当前宿主不支持打开设置页' };
     });
 
-    // ---------- 设置页动作：测试连接 ----------
+    // ---------- 设置页动作：获取模型列表 / 测试连接 / 让桌宠说句话 ----------
     ctx.onSettingsAction(async (actionId, values) => {
-      if (actionId !== 'test') return { success: false, error: `未实现的动作: ${actionId}` };
       const config = buildConfig(ctx, values);
-      if (!config.apiKey) return { success: false, error: '请先填写 API Key' };
-      try {
-        const reply = await testConnection(config);
-        return { success: true, message: `✅ 连接成功，模型回复：${reply || '(空回复)'}` };
-      } catch (e) {
-        return { success: false, error: `❌ 连接失败：${e.message}` };
+      if (actionId === 'models') {
+        try {
+          const models = await listModels(config);
+          if (!models.length) return { success: true, message: '服务在线，但还没有任何模型（Ollama 可执行 ollama pull qwen2.5:7b）' };
+          return { success: true, message: `📋 共 ${models.length} 个模型：${models.join('、')}` };
+        } catch (e) {
+          return { success: false, error: `❌ 获取失败：${e.message}` };
+        }
       }
+      if (actionId === 'test') {
+        try {
+          const resolved = await withModel(config);
+          const reply = await testConnection(resolved);
+          return { success: true, message: `✅ 连接成功（${resolved.model}），模型回复：${reply || '(空回复)'}` };
+        } catch (e) {
+          return { success: false, error: `❌ 连接失败：${e.message}` };
+        }
+      }
+      if (actionId === 'talk') {
+        const result = await petTalk(ctx, { manual: true, override: values });
+        return result.success
+          ? { success: true, message: `🗨️ ${result.text}` }
+          : { success: false, error: `❌ ${result.error}` };
+      }
+      return { success: false, error: `未实现的动作: ${actionId}` };
     });
 
-    // ---------- 设置变更：同步给已打开的对话窗口 ----------
+    // ---------- 设置变更：同步给已打开的对话窗口，并重设闲聊定时器 ----------
     ctx.onSettingsChanged(() => {
       ctx.ipc.send('config-changed', publicConfig(ctx));
+      startChatterTimer(ctx);
     });
 
+    startChatterTimer(ctx);
+
     // ---------- 卸载清理 ----------
-    ctx.onDeactivate(() => cancelAllPending());
+    ctx.onDeactivate(() => {
+      cancelAllPending();
+      stopChatterTimer();
+    });
 
     ctx.log('已就绪（对话窗口按需创建）');
   },
 
   deactivate() {
     cancelAllPending();
+    stopChatterTimer();
   }
 };
 
@@ -265,17 +345,15 @@ async function handleSendMessage(ctx, payload) {
     conversation: summaryOf(saved.conversation)
   });
 
-  const config = buildConfig(ctx);
-  if (!config.apiKey) {
-    ctx.ipc.send('stream-error', {
-      requestId,
-      conversationId: conversation.id,
-      error: '尚未配置 API Key，请在「设置 → AI 对话」中填写'
-    });
+  let config;
+  try {
+    config = await withModel(buildConfig(ctx));
+  } catch (e) {
+    ctx.ipc.send('stream-error', { requestId, conversationId: conversation.id, error: e.message });
     return;
   }
 
-  // 组装请求上下文：系统提示词 + 该会话全部历史
+  // 组装请求上下文：系统提示词 + 该会话全部历史（思考过程不回传给模型）
   const history = conversations.get(conversation.id);
   const messages = [
     { role: 'system', content: config.systemPrompt },
@@ -284,13 +362,18 @@ async function handleSendMessage(ctx, payload) {
 
   const handle = requestChat(config, messages, {
     stream: config.stream,
-    onChunk: (chunk) => ctx.ipc.send('stream-chunk', { requestId, chunk })
+    onChunk: (chunk, kind) => ctx.ipc.send('stream-chunk', { requestId, chunk, kind })
   });
   pending.set(requestId, handle);
 
   try {
     const full = await handle.promise;
-    const done = conversations.addMessage(conversation.id, { role: 'assistant', content: full });
+    const done = conversations.addMessage(conversation.id, {
+      role: 'assistant',
+      content: full.content.trim(),
+      reasoning: full.reasoning.trim(),
+      model: config.model
+    });
     ctx.ipc.send('stream-done', {
       requestId,
       conversationId: conversation.id,
@@ -309,5 +392,69 @@ async function handleSendMessage(ctx, payload) {
     }
   } finally {
     pending.delete(requestId);
+  }
+}
+
+// ============================================================================
+// 桌宠闲聊：让本地模型生成一句话，用桌宠的气泡说出来
+// ============================================================================
+
+function stopChatterTimer() {
+  if (chatterTimer) clearInterval(chatterTimer);
+  chatterTimer = null;
+}
+
+function startChatterTimer(ctx) {
+  stopChatterTimer();
+  const minutes = Math.min(1440, Math.max(0, buildConfig(ctx).chatterMinutes));
+  if (!(minutes > 0)) return;
+  chatterTimer = setInterval(() => {
+    petTalk(ctx, { manual: false }).catch(() => { /* 定时闲聊失败静默跳过 */ });
+  }, minutes * 60 * 1000);
+}
+
+/** 把模型输出整理成适合气泡展示的一句话 */
+function tidyChatter(text) {
+  const line = String(text || '')
+    .replace(/^["'“”「」\s]+|["'“”「」\s]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return line.length > CHATTER_MAX_LENGTH ? `${line.slice(0, CHATTER_MAX_LENGTH)}…` : line;
+}
+
+/**
+ * 让桌宠说一句话
+ * @param {Object} ctx
+ * @param {{ manual?: boolean, override?: Object }} options manual 为 true 时失败也会用气泡提示
+ * @returns {Promise<{ success: boolean, text?: string, error?: string }>}
+ */
+async function petTalk(ctx, options = {}) {
+  const show = (text, duration) => {
+    const fn = ctx.host && ctx.host.showPetBubble;
+    if (typeof fn === 'function') fn({ text, duration });
+  };
+  if (chatterBusy) return { success: false, error: '正在想上一句…' };
+  chatterBusy = true;
+  if (options.manual) show('🤔 让我想想…', 15000);
+  try {
+    const config = await withModel(buildConfig(ctx, options.override));
+    // 推理模型会先输出很长的思考过程，给足 token 余量
+    const handle = requestChat({ ...config, maxTokens: 1024, temperature: 0.9 }, [
+      { role: 'system', content: config.chatterPrompt },
+      { role: 'user', content: `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false })}，说一句吧。` }
+    ], { stream: false });
+    pending.set('pet-talk', handle);
+    const result = await handle.promise;
+    const text = tidyChatter(result.content);
+    if (!text) throw new Error('模型没有返回内容');
+    show(text, Math.min(12000, 3000 + text.length * 180));
+    return { success: true, text };
+  } catch (e) {
+    const error = (e && e.message) || '未知错误';
+    if (options.manual) show(`😵 ${error}`, 5000);
+    return { success: false, error };
+  } finally {
+    pending.delete('pet-talk');
+    chatterBusy = false;
   }
 }

@@ -1,6 +1,6 @@
 /**
  * 桌宠渲染进程逻辑
- * 拖拽移动、点击反应、双击气泡（余额 / 自定义语句），以及插件贡献的右键菜单（独立菜单窗口）
+ * 拖拽移动、点击反应、双击气泡（本地模型状态 / 自定义语句），以及插件贡献的右键菜单（独立菜单窗口）
  */
 
 // ====== 状态管理 ======
@@ -27,11 +27,11 @@ const state = {
 
   balance: {
     enabled: true,
-    intervalMinutes: 30,
-    customPhrases: [],         // 关闭余额气泡后，双击随机展示的自定义语句
-    fetching: false,           // 是否正在请求余额
-    lastText: '',              // 最近一次成功的余额文案
-    lastData: null,            // 最近一次成功的余额数据（用于冷却期内重绘卡片）
+    intervalMinutes: 0,
+    customPhrases: [],         // 关闭状态气泡后，双击随机展示的自定义语句
+    fetching: false,           // 是否正在检测模型服务
+    lastText: '',              // 最近一次成功的状态文案
+    lastData: null,            // 最近一次成功的状态数据（用于冷却期内重绘卡片）
     lastError: '',             // 最近一次失败文案
     lastOk: false,             // 最近一次是否成功
     lastFetchAt: 0             // 最近一次请求时间（用于避免连续点击刷接口）
@@ -49,15 +49,15 @@ const state = {
   appPath: { assets: '', projectRoot: '' }
 };
 
-/** 余额气泡自动展示的初始延迟（毫秒） */
+/** 状态气泡自动展示的初始延迟（毫秒） */
 const BALANCE_FIRST_DELAY = 3000;
-/** 手动点击触发余额查询的最小间隔（毫秒），避免连点刷接口 */
+/** 手动点击触发状态检测的最小间隔（毫秒），避免连点刷接口 */
 const BALANCE_MANUAL_COOLDOWN = 5000;
 /** 双击判定阈值（毫秒）：拿不到系统点击次数时，两次单击间隔小于它算一次双击 */
 const DOUBLE_CLICK_MS = 400;
 
 /** 没有自定义语句时使用的内置问候语 */
-const DEFAULT_PHRASES = ['戳我干嘛~', '嘿嘿 😊', '🐾 嗷呜~嗷呜~', '我在呢！', '❤️❤️❤️❤️❤️', '💭', '偷偷告诉你，双击我会说话哦', '🤗🤗🤗', '喵~喵~喵~', '别叫我蓝色大肥鱼！！！', '好困 zZZ', '吃白饭🍚🍚🍚'];
+const DEFAULT_PHRASES = ['戳我干嘛~', '嘿嘿 😊', '🐾 嗷呜~嗷呜~', '我在呢！', '❤️❤️❤️❤️❤️', '💭', '偷偷告诉你，双击我会说话哦', '🤗🤗🤗', '喵~喵~喵~', '右键我可以让我说句话哦', '好困 zZZ', '吃白饭🍚🍚🍚'];
 
 // ====== DOM 元素 ======
 const elements = {
@@ -77,12 +77,12 @@ async function init() {
   startIdleAnimation();
   startBalanceTimer();
 
-  // 启动后稍作延迟展示一次余额，让用户确认配置是否生效
+  // 启动后稍作延迟展示一次模型状态，让用户确认本地模型服务是否已启动
   if (state.balance.enabled) {
     setTimeout(() => showBalance({ silent: true }), BALANCE_FIRST_DELAY);
   }
 
-  console.log('🐾 DeskLLMPet 就绪',
+  console.log('🐾 DeskPet 就绪',
     `闲置:${state.idlePool.length} 点击:${state.clickPool.length} 拖拽:${state.dragAnimPath ? '✓' : '✗'}`,
     `窗口裁剪:${Math.round((Number(state.config.crop) || 0.55) * 100)}%`,
     `自定义语句:${state.balance.customPhrases.length}`);
@@ -164,7 +164,7 @@ function findDragAnimation() {
 }
 
 /**
- * 应用余额气泡配置并重启定时器
+ * 应用模型状态气泡配置并重启定时器
  */
 function applyBalanceConfig(config) {
   if (!config) return;
@@ -205,14 +205,14 @@ function setupIpcListeners() {
     applyCrop();
   });
 
-  // 余额配置变更（设置页面保存后立即生效）
+  // 模型状态配置变更（设置页面保存后立即生效）
   window.petAPI.onBalanceConfigChanged((config) => {
     applyBalanceConfig(config);
     // 配置刚被修改，顺手刷新一次让用户看到效果（未启用时忽略）
     if (state.balance.enabled) showBalance();
   });
 
-  // 托盘菜单：立即查看余额
+  // 托盘菜单：立即查看模型状态
   window.petAPI.onShowBalance(() => {
     showBalance({ force: true });
   });
@@ -319,7 +319,7 @@ function triggerDragAnimation() {
 /**
  * 单击 / 双击分发
  * 单击：只播放点击反应动画（不再弹气泡）
- * 双击：弹气泡 —— 启用余额时展示余额，否则随机展示一句自定义语句
+ * 双击：弹气泡 —— 启用模型状态时展示模型状态，否则随机展示一句自定义语句
  *
  * 双击优先用浏览器给的点击次数（跟系统双击速度设置一致），
  * 拿不到时退回到时间间隔判断
@@ -348,7 +348,7 @@ function playClickReaction() {
   }
 }
 
-/** 双击触发的气泡：余额气泡（启用时）或自定义语句气泡 */
+/** 双击触发的气泡：模型状态气泡（启用时）或自定义语句气泡 */
 function triggerBubble() {
   if (state.balance.enabled) {
     showBalance();
@@ -390,10 +390,10 @@ function onKeyDown(e) {
   }
 }
 
-// ====== API 余额气泡 ======
+// ====== 本地模型状态气泡 ======
 
 /**
- * 启动/重启余额定时展示
+ * 启动/重启状态定时展示
  * intervalMinutes = 0 表示不自动展示，仅点击触发
  */
 function startBalanceTimer() {
@@ -413,11 +413,11 @@ function startBalanceTimer() {
 }
 
 /**
- * 展示 API 余额气泡
+ * 展示本地模型状态气泡
  * @param {Object} [options]
  * @param {boolean} [options.force] 忽略冷却时间（右键菜单/托盘触发）
  * @param {boolean} [options.silent] 定时触发时，失败不打扰用户
- * @returns {Promise<boolean>} 是否成功取到余额
+ * @returns {Promise<boolean>} 模型服务是否在线
  */
 async function showBalance(options = {}) {
   const { force = false, silent = false } = options;
@@ -432,13 +432,13 @@ async function showBalance(options = {}) {
     }
     const cached = state.balance.lastOk ? state.balance.lastText : state.balance.lastError;
     if (cached) {
-      showBubble(cached, 4000);
+      showBubble(cached, 5000);
       return state.balance.lastOk;
     }
   }
 
   state.balance.fetching = true;
-  if (!state.balance.lastText) showBubble('💰 查询余额中...', 8000);
+  if (!state.balance.lastText) showBubble('🔍 正在连接本地模型...', 8000);
 
   let result = null;
   try {
@@ -454,25 +454,25 @@ async function showBalance(options = {}) {
   if (result && result.success) {
     state.balance.lastOk = true;
     state.balance.lastError = '';
-    state.balance.lastText = result.text || '💰 暂无余额信息';
+    state.balance.lastText = result.text || '🟢 本地模型在线';
     state.balance.lastData = result.data || null;
     if (result.data) {
       showBalanceCard(result.data);
     } else {
       showBubble(state.balance.lastText, 5000);
     }
-    console.log('💰 余额气泡已更新:', state.balance.lastText.replace(/\n/g, ' '));
+    console.log('🧠 模型状态已更新:', state.balance.lastText.replace(/\n/g, ' '));
     return true;
   }
 
-  const errorText = `⚠️ 余额查询失败：${(result && result.error) || '未知错误'}`;
+  const errorText = `🔌 本地模型离线\n${(result && result.error) || '未知错误'}`;
   state.balance.lastOk = false;
   state.balance.lastError = errorText;
   if (silent) {
     // 定时展示失败时只在控制台提示，避免频繁打扰
     console.warn(errorText);
   } else {
-    showBubble(errorText, 4000);
+    showBubble(errorText, 5000);
   }
   return false;
 }
@@ -683,31 +683,29 @@ function showBubble(text, duration = 2000) {
 }
 
 /**
- * 显示余额卡片（由气泡窗口渲染，比文字气泡更大更醒目）
- * @param {Object} data - 主进程返回的余额数据
+ * 显示模型状态卡片（由气泡窗口渲染，比文字气泡更大更醒目）
+ * @param {Object} data - 主进程返回的状态数据
  * @param {number} [duration] 展示时长（毫秒），默认 6 秒
  */
 function showBalanceCard(data, duration = 6000) {
   try {
-    window.petAPI.showBubble({ kind: 'balance', data, duration });
+    window.petAPI.showBubble({ kind: 'status', data, duration });
   } catch (e) {
-    console.warn('余额气泡显示失败:', e.message);
+    console.warn('状态气泡显示失败:', e.message);
     showBubble(formatBalancePlain(data), duration);
   }
 }
 
 /** 卡片不可用时的纯文本兜底 */
 function formatBalancePlain(data) {
-  const balances = (data && Array.isArray(data.balances)) ? data.balances : [];
-  const symbolOf = (currency) => (currency === 'CNY' ? '¥' : (currency === 'USD' ? '$' : `${currency || ''} `));
-  if (balances.length === 0) return '💰 暂无余额信息';
-  const head = (!data || data.isAvailable !== false) ? '💰 API 余额' : '⚠️ 余额不足';
-  return head + '\n' + balances.map((b) => `${symbolOf(b.currency)}${b.totalBalance}`).join('\n');
+  if (!data) return '🟢 本地模型在线';
+  const models = Array.isArray(data.models) ? data.models : [];
+  return `🟢 ${data.providerName || '本地模型'} 在线\n${data.model || '尚未选择模型'}\n共 ${models.length} 个模型`;
 }
 
 /**
  * 随机展示一句自定义语句（没配置时用内置问候语）
- * 只在关闭余额气泡后由双击触发
+ * 只在关闭状态气泡后由双击触发
  */
 function showRandomBubble() {
   const custom = state.balance.customPhrases;

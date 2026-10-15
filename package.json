@@ -1,7 +1,7 @@
 {
-  "name": "deskllmpet",
-  "version": "1.1.0",
-  "description": "桌面宠物 - 支持 API 余额气泡、插件化扩展的交互式桌面伴侣",
+  "name": "deskpet-local",
+  "version": "2.0.0",
+  "description": "连接本地部署大模型（Ollama / LM Studio / llama.cpp / vLLM）的桌面宠物，基于 isKage/desk-llm-pet 改造",
   "main": "src/main/main.js",
   "author": "isKage",
   "license": "MIT",
@@ -32,8 +32,8 @@
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.iskage.deskllmpet",
-    "productName": "DeskLLMPet",
+    "appId": "com.deskpet.localllm",
+    "productName": "DeskPet",
     "copyright": "MIT License - isKage",
     "directories": {
       "output": "dist"
@@ -86,8 +86,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "DeskLLMPet",
-      "uninstallDisplayName": "DeskLLMPet"
+      "shortcutName": "DeskPet",
+      "uninstallDisplayName": "DeskPet"
     },
     "asar": true,
     "asarUnpack": []

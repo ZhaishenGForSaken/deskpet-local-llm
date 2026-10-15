@@ -74,7 +74,7 @@ body {
   display: none;
 }
 
-/* ====== 余额卡片 ====== */
+/* ====== 模型状态卡片 ====== */
 .balance-card {
   min-width: calc(196px * var(--s));
   max-width: calc(268px * var(--s));
@@ -167,6 +167,23 @@ body {
 
 .balance-sub .item {
   white-space: nowrap;
+}
+
+/* 模型状态卡片：模型名可能很长，字号小一些并允许折行 */
+.balance-value.model-name {
+  font-size: calc(17px * var(--s));
+  word-break: break-all;
+}
+
+.balance-value .status-dot {
+  display: inline-block;
+  width: calc(8px * var(--s));
+  height: calc(8px * var(--s));
+  margin-right: calc(6px * var(--s));
+  border-radius: 50%;
+  background: #3ddc84;
+  box-shadow: 0 0 calc(8px * var(--s)) rgba(61, 220, 132, 0.8);
+  vertical-align: middle;
 }
 
 @keyframes bubbleIn {

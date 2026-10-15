@@ -11,11 +11,20 @@ const {
   createPetWindow, getPetWindow, setPetGeometryListener
 } = require('./pet-window');
 const { createSettingsWindow, getSettingsWindow } = require('./settings-window');
-const { createBubbleWindow, positionBubble, hideBubble } = require('./bubble-window');
+const { createBubbleWindow, positionBubble, hideBubble, showBubble } = require('./bubble-window');
 const { createMenuWindow, hideMenuWindow } = require('./menu-window');
 const { createTray } = require('./tray');
 const { registerIpcHandlers } = require('./ipc-handlers');
 const { getLLMConfig } = require('../shared/store');
+const { resolveBaseUrl, providerName } = require('../shared/local-llm');
+
+/** 给插件用的共享模型配置：地址统一解析成 OpenAI 兼容的 base 地址 */
+function sharedLLMConfig() {
+  const config = getLLMConfig();
+  let apiEndpoint = config.apiEndpoint;
+  try { apiEndpoint = resolveBaseUrl(config); } catch (e) { /* 地址非法时原样交给插件报错 */ }
+  return { ...config, apiEndpoint, providerName: providerName(config.provider) };
+}
 
 // 插件宿主按需加载：即使 src/plugins 缺失或损坏，本体也能照常启动
 let pluginManager = null;
@@ -31,12 +40,12 @@ const isDev = process.argv.includes('--dev');
 const CODE_ROOT = path.join(__dirname, '..', '..');
 
 // 设置应用名称（开发模式下 Dock/任务栏显示的名称）
-app.setName('DeskLLMPet');
+app.setName('DeskPet');
 
 // macOS: 修复 secure coding 警告
 if (process.platform === 'darwin') {
   app.setAboutPanelOptions({
-    applicationName: 'DeskLLMPet',
+    applicationName: 'DeskPet',
     applicationVersion: app.getVersion(),
     credits: '基于 Electron 构建的桌面宠物应用'
   });
@@ -50,7 +59,7 @@ if (!gotTheLock) {
   app.on('second-instance', () => {
     // 用户尝试打开第二个实例时，聚焦已有窗口
     console.warn('');
-    console.warn('⚠️  已经有一个 DeskLLMPet 在运行，本次启动被单实例锁拦截并已退出。');
+    console.warn('⚠️  已经有一个 DeskPet 在运行，本次启动被单实例锁拦截并已退出。');
     console.warn('    如果你刚改了代码，请先在托盘菜单点「退出」关掉旧实例，再重新启动，');
     console.warn('    否则跑的还是旧代码，改动不会生效。');
     console.warn('');
@@ -66,7 +75,7 @@ if (!gotTheLock) {
  * 应用初始化
  */
 async function initApp() {
-  console.log(`🚀 DeskLLMPet 启动 v${app.getVersion()} | 代码目录: ${CODE_ROOT} | 参数: ${process.argv.slice(1).join(' ') || '(无)'}`);
+  console.log(`🚀 DeskPet 启动 v${app.getVersion()} | 代码目录: ${CODE_ROOT} | 参数: ${process.argv.slice(1).join(' ') || '(无)'}`);
 
   // 注册所有 IPC 处理器
   registerIpcHandlers();
@@ -137,8 +146,14 @@ async function loadPlugins() {
       electron,
       logger: console,
       hostServices: {
-        // 只读共享配置：插件缺省时可回退使用本体的 API 配置
-        getSharedLLMConfig: () => getLLMConfig(),
+        // 只读共享配置：插件缺省时回退使用本体的本地模型配置
+        getSharedLLMConfig: () => sharedLLMConfig(),
+        // 让桌宠说话：插件可以借用桌宠的气泡
+        showPetBubble: (payload) => {
+          const text = String((payload && payload.text) || '').trim();
+          if (!text) return false;
+          return showBubble({ kind: 'text', text, duration: Number(payload.duration) || 4000 }).success;
+        },
         // 打开本体的设置窗口
         openSettings: () => { createSettingsWindow(); return true; }
       }

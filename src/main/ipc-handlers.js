@@ -15,7 +15,7 @@ const {
   normalizeCustomPhrases, MAX_PHRASE_LENGTH,
   getAllConfig
 } = require('../shared/store');
-const { fetchBalance, formatBalanceText } = require('../shared/deepseek-api');
+const { fetchStatus, formatStatusText, listModels, PROVIDERS } = require('../shared/local-llm');
 const { createSettingsWindow } = require('./settings-window');
 const {
   togglePetWindow, setPetSize, setPetOpacity,
@@ -40,29 +40,42 @@ function sendToPet(channel, data) {
  * 注册所有 IPC 处理器
  */
 function registerIpcHandlers() {
-  // ====== API 配置（仅用于余额查询） ======
+  // ====== 本地模型服务配置 ======
 
   ipcMain.handle('get-llm-config', () => getLLMConfig());
+
+  ipcMain.handle('get-llm-providers', () => PROVIDERS);
 
   ipcMain.handle('set-llm-config', (event, config) => {
     if (config && typeof config === 'object') {
       const next = {};
-      for (const key of ['apiEndpoint', 'balanceEndpoint', 'apiKey']) {
+      for (const key of ['apiEndpoint', 'apiKey', 'model']) {
         if (typeof config[key] === 'string') next[key] = config[key].trim();
       }
+      if (typeof config.provider === 'string' && PROVIDERS[config.provider]) next.provider = config.provider;
       setLLMConfig(next);
-      // 通知桌宠：API 配置变化后刷新一次余额
+      // 通知桌宠：服务配置变化后刷新一次状态
       sendToPet('balance-config-changed', getBalanceConfig());
     }
     return { success: true };
   });
 
-  // ====== API 余额 ======
+  // 读取模型列表（设置页可传入未保存的表单值）
+  ipcMain.handle('list-local-models', async (event, override) => {
+    const config = { ...getLLMConfig(), ...(override && typeof override === 'object' ? override : {}) };
+    try {
+      return { success: true, models: await listModels(config) };
+    } catch (e) {
+      return { success: false, error: e.message, models: [] };
+    }
+  });
+
+  // ====== 模型状态 ======
 
   ipcMain.handle('get-api-balance', async () => {
     try {
-      const result = await fetchBalance(getLLMConfig());
-      return { success: true, data: result, text: formatBalanceText(result) };
+      const result = await fetchStatus(getLLMConfig());
+      return { success: true, data: result, text: formatStatusText(result) };
     } catch (e) {
       return { success: false, error: e.message };
     }
@@ -77,9 +90,9 @@ function registerIpcHandlers() {
       if (config.intervalMinutes !== undefined) {
         const minutes = Number(config.intervalMinutes);
         // 0 表示只在双击时展示；其余限制在 1 ~ 1440 分钟之间
-        next.intervalMinutes = Number.isFinite(minutes) ? Math.min(1440, Math.max(0, minutes)) : 30;
+        next.intervalMinutes = Number.isFinite(minutes) ? Math.min(1440, Math.max(0, minutes)) : 0;
       }
-      // 自定义语句：关闭余额气泡后，双击桌宠随机展示其中一句
+      // 自定义语句：关闭状态气泡后，双击桌宠随机展示其中一句
       if (config.customPhrases !== undefined) {
         next.customPhrases = normalizeCustomPhrases(config.customPhrases);
       }
@@ -153,10 +166,14 @@ function registerIpcHandlers() {
 
   // 预览气泡（设置页使用）
   ipcMain.handle('preview-bubble', () => showBubble({
-    kind: 'balance',
+    kind: 'status',
     data: {
-      isAvailable: true,
-      balances: [{ currency: 'CNY', totalBalance: '128.00', grantedBalance: '8.00', toppedUpBalance: '120.00' }]
+      online: true,
+      providerName: 'Ollama',
+      model: 'qwen2.5:7b',
+      models: ['qwen2.5:7b', 'deepseek-r1:8b', 'nomic-embed-text'],
+      loaded: [{ name: 'qwen2.5:7b', sizeVram: 5.2 * 1024 ** 3 }],
+      latencyMs: 12
     },
     duration: 4000
   }));

@@ -6,20 +6,23 @@
 const Store = require('electron-store');
 
 const defaults = {
+  // 本地大模型服务（OpenAI 兼容接口）
   llm: {
-    apiEndpoint: 'https://api.deepseek.com',
-    balanceEndpoint: '',
-    apiKey: ''
+    provider: 'ollama',                         // ollama / lmstudio / llamacpp / vllm / custom
+    apiEndpoint: 'http://127.0.0.1:11434/v1',
+    apiKey: '',                                 // 本地服务一般不需要
+    model: ''                                   // 留空则自动使用服务端第一个模型
   },
   animations: {
     idlePool: [],
     clickPool: [],
     currentIdleIndex: 0
   },
+  // 模型状态气泡（沿用 balance 键名，便于兼容旧配置结构）
   balance: {
     enabled: true,
-    intervalMinutes: 30,
-    // 关闭余额气泡后，双击桌宠随机展示的自定义语句（每行一句）
+    intervalMinutes: 0,
+    // 关闭状态气泡后，双击桌宠随机展示的自定义语句（每行一句）
     customPhrases: []
   },
   pet: {
@@ -49,11 +52,11 @@ function getStore() {
   return _store;
 }
 
-// ====== LLM 配置（仅用于余额查询） ======
+// ====== 本地模型服务配置（状态气泡 + AI 对话插件共享） ======
 function getLLMConfig() { return { ...defaults.llm, ...getStore().get('llm') }; }
 function setLLMConfig(config) { getStore().set('llm', { ...getLLMConfig(), ...config }); }
 
-// ====== 余额气泡配置 ======
+// ====== 模型状态气泡配置 ======
 
 /** 单条自定义语句的最大长度 */
 const MAX_PHRASE_LENGTH = 200;

@@ -27,7 +27,7 @@ function createChatWindow(ctx) {
     height: 640,
     minWidth: 520,
     minHeight: 420,
-    title: 'DeskLLMPet - AI 对话',
+    title: 'DeskPet - AI 对话',
     backgroundColor: '#1a1a2e',
     skipTaskbar: false,
     resizable: true,

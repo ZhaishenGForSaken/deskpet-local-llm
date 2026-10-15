@@ -7,7 +7,7 @@
  *      双击判定与自定义语句状态都已就绪
  *   2. 右键菜单页面：本体菜单项 + 插件菜单项都渲染，并按内容回报自适应尺寸
  *   3. 设置页面能动态渲染出插件的设置面板，自定义语句表单项可用
- *   4. AI 对话插件窗口能打开，preload 桥可用，且「未配置 API Key」能在
+ *   4. AI 对话插件窗口能打开，preload 桥可用，且「本地模型服务离线」能在
  *      「渲染进程 → 主进程 → 渲染进程」整条链路上正确回报
  *   5. 全程没有渲染进程报错（console.error / preload 异常 / 加载失败）
  *
@@ -152,7 +152,7 @@ async function main() {
   ).catch((e) => ({ error: e.message }));
 
   record('右键菜单页面：本体项 + 插件项都渲染，并按内容回报自适应尺寸',
-    menuDom.items === 5 && menuDom.labels.includes('AI 对话') && menuDom.labels.includes('退出') &&
+    menuDom.items === 6 && menuDom.labels.includes('AI 对话') && menuDom.labels.includes('说句话') && menuDom.labels.includes('退出') &&
     reportedMenuSize && reportedMenuSize.width > 60 && reportedMenuSize.height > 100,
     `items=${menuDom.items} size=${JSON.stringify(reportedMenuSize)} labels=${JSON.stringify(menuDom.labels)}`);
 
@@ -180,7 +180,7 @@ async function main() {
 
   record('设置页面：插件设置面板已动态生成',
     settingsPanel.tab && settingsPanel.panel && settingsPanel.fields >= 7 &&
-    settingsPanel.saveBtn && settingsPanel.actions >= 1 && settingsPanel.modelValue === 'deepseek-chat',
+    settingsPanel.saveBtn && settingsPanel.actions >= 1 && settingsPanel.modelValue === '',
     JSON.stringify(settingsPanel));
 
   const phraseUi = await settings.win.webContents.executeJavaScript(
@@ -195,7 +195,7 @@ async function main() {
   ).catch((e) => ({ error: e.message }));
 
   record('设置页面：双击自定义语句可编辑、可预览、有状态提示',
-    phraseUi.box === true && phraseUi.preview === true && /余额/.test(phraseUi.hint || ''),
+    phraseUi.box === true && phraseUi.preview === true && /状态气泡/.test(phraseUi.hint || ''),
     JSON.stringify(phraseUi));
 
   // 关于页版本号应当来自主进程（真实应用里 = package.json 的 version；
@@ -211,6 +211,8 @@ async function main() {
     JSON.stringify(aboutVersion));
 
   // ---------- 4. AI 对话插件窗口 ----------
+  // 指向一个没有服务监听的端口，稳定地走「服务离线」错误链路（也避免真的打到用户本机的模型）
+  host.setPluginSettings('llm-chat', { apiEndpoint: 'http://127.0.0.1:9/v1', model: '' });
   const before = BrowserWindow.getAllWindows().length;
   const command = await host.runCommand('llm-chat', 'open-chat', { source: 'smoke' });
   const chatWin = BrowserWindow.getAllWindows().find(
@@ -237,7 +239,7 @@ async function main() {
            document.getElementById('message-input').value = '你好';
            document.getElementById('btn-send').click();
 
-           // 等错误气泡出现（未配置 API Key）
+           // 等错误气泡出现（本地模型服务离线）
            const start = Date.now();
            while (Date.now() - start < 8000) {
              if (document.querySelector('.message.assistant.error')) break;
@@ -266,12 +268,12 @@ async function main() {
   }
 
   record('对话页面：preload 桥与首屏渲染正常',
-    chatResult.bridge === true && chatResult.modal === 'deepseek-chat' && chatResult.listCount === 0,
+    chatResult.bridge === true && chatResult.modal === '' && chatResult.listCount === 0,
     JSON.stringify({ bridge: chatResult.bridge, model: chatResult.modal, endpoint: chatResult.endpoint }));
 
   record('对话页面：点击发送后 UI 与错误链路都正确',
     chatResult.welcomeGone === true && chatResult.userBubbles === 1 && chatResult.errorBubbles === 1 &&
-    /API Key/.test(chatResult.errorText || '') && chatResult.sendButtonReset === true,
+    /连接不到本地模型服务/.test(chatResult.errorText || '') && chatResult.sendButtonReset === true,
     JSON.stringify({
       welcomeGone: chatResult.welcomeGone,
       userBubbles: chatResult.userBubbles,
@@ -330,7 +332,7 @@ async function main() {
     ).catch(() => 0);
 
     record('右键菜单窗口：按菜单内容自适应尺寸，并贴在鼠标位置',
-      opened.success === true && !!expected && itemCount === 5 && menuShown === 1 &&
+      opened.success === true && !!expected && itemCount === 6 && menuShown === 1 &&
       normalBounds.width === expected.width && normalBounds.height === expected.height &&
       normalBounds.x === expected.x && normalBounds.y === expected.y,
       `size=${JSON.stringify(normalSize)} bounds=${JSON.stringify(normalBounds)} items=${itemCount}`);
