@@ -53,6 +53,8 @@ const state = {
 const BALANCE_FIRST_DELAY = 3000;
 /** 手动点击触发状态检测的最小间隔（毫秒），避免连点刷接口 */
 const BALANCE_MANUAL_COOLDOWN = 5000;
+/** 拖拽专用动画的文件名特征 */
+const DRAG_ANIM_PATTERN = /被鼠标拖拽|拖拽悬空/i;
 /** 双击判定阈值（毫秒）：拿不到系统点击次数时，两次单击间隔小于它算一次双击 */
 const DOUBLE_CLICK_MS = 400;
 
@@ -154,7 +156,7 @@ async function loadAnimations() {
 function findDragAnimation() {
   // 在所有动画中查找拖拽动画
   const allAnims = [...state.idlePool, ...state.clickPool];
-  const dragAnim = allAnims.find(a => /被鼠标拖拽|拖拽悬空/i.test(a.name));
+  const dragAnim = allAnims.find(a => DRAG_ANIM_PATTERN.test(a.name));
   if (dragAnim) {
     state.dragAnimPath = dragAnim.path;
   } else {
@@ -297,6 +299,9 @@ function triggerDragAnimation() {
 
   // 如果正在播放点击动画，优先拖拽动画
   state.isPlayingClick = false;
+  // 取消正在播放 / 等待中的闲置动作动画，拖拽结束后会回到待机
+  state.idleActionToken = (state.idleActionToken || 0) + 1;
+  if (state.autoIdleTimer) { clearTimeout(state.autoIdleTimer); state.autoIdleTimer = null; }
 
   const animPath = state.dragAnimPath;
   if (animPath) {
@@ -507,30 +512,94 @@ function setupDropSafetyGuard() {
 
 // ====== 动画控制 ======
 
+/**
+ * 闲置节奏：平时循环播放「常驻待机」动画，隔一段随机时间穿插一个「动作」动画，
+ * 动作动画完整播放一遍后再回到待机 —— 不会在播放中途被切走
+ */
+const BASE_IDLE_PATTERN = /待机|呼吸|东张西望/;
+/** 两次动作动画之间的随机间隔（毫秒） */
+const IDLE_ACTION_GAP_MIN = 20000;
+const IDLE_ACTION_GAP_MAX = 45000;
+/** 动作动画的兜底时长：万一没收到 ended 事件，也会回到待机 */
+const IDLE_ACTION_MAX_MS = 20000;
+
 function startIdleAnimation() {
   playRandomIdle();
-  if (state.autoIdleTimer) clearInterval(state.autoIdleTimer);
-  state.autoIdleTimer = setInterval(() => {
-    if (!state.isPlayingClick && !state.isPlayingDrag) playRandomIdle();
-  }, state.config.idleInterval);
 }
 
+/** 把闲置池分成常驻待机与动作两组；没有匹配的待机动画时，用第一个闲置动画当待机 */
+function splitIdlePool() {
+  const base = state.idlePool.filter((a) => BASE_IDLE_PATTERN.test(a.name));
+  const actions = state.idlePool.filter((a) => !BASE_IDLE_PATTERN.test(a.name));
+  if (base.length > 0) return { base, actions };
+  return { base: state.idlePool.slice(0, 1), actions: state.idlePool.slice(1) };
+}
+
+/** 随机挑一个，尽量不和当前正在播的重复 */
+function pickAnimation(list) {
+  if (list.length === 1) return list[0];
+  const candidates = list.filter((a) => a.name !== state.currentIdleFile);
+  const pool = candidates.length > 0 ? candidates : list;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/** 回到闲置状态：循环播放常驻待机动画，并安排下一次动作动画 */
 function playRandomIdle() {
+  if (state.autoIdleTimer) { clearTimeout(state.autoIdleTimer); state.autoIdleTimer = null; }
+  state.idleActionToken = (state.idleActionToken || 0) + 1;
   if (state.idlePool.length === 0) { createPlaceholderAnimation(); return; }
-  let idx;
-  if (state.idlePool.length === 1) idx = 0;
-  else { do { idx = Math.floor(Math.random() * state.idlePool.length); } while (state.idlePool[idx].name === state.currentIdleFile); }
-  const anim = state.idlePool[idx];
+
+  const { base, actions } = splitIdlePool();
+  const anim = pickAnimation(base);
+  if (anim.name !== state.currentIdleFile || elements.video.loop !== true) {
+    state.currentIdleFile = anim.name;
+    playVideo(anim.path, true);
+  }
+  if (actions.length > 0) scheduleIdleAction(actions);
+}
+
+function scheduleIdleAction(actions) {
+  const gap = IDLE_ACTION_GAP_MIN + Math.random() * (IDLE_ACTION_GAP_MAX - IDLE_ACTION_GAP_MIN);
+  state.autoIdleTimer = setTimeout(() => {
+    state.autoIdleTimer = null;
+    // 正在点击 / 拖拽时不打断，稍后再试
+    if (state.isPlayingClick || state.isPlayingDrag || state.isDragging) {
+      scheduleIdleAction(actions);
+      return;
+    }
+    playIdleAction(pickAnimation(actions));
+  }, gap);
+}
+
+/** 完整播放一遍动作动画，结束后回到待机（被点击 / 拖拽打断时由它们负责回到待机） */
+function playIdleAction(anim) {
+  const token = (state.idleActionToken || 0) + 1;
+  state.idleActionToken = token;
   state.currentIdleFile = anim.name;
-  playVideo(anim.path, true);
+  playVideo(anim.path, false);
+
+  const video = elements.video;
+  const finish = () => {
+    video.removeEventListener('ended', finish);
+    clearTimeout(guard);
+    if (state.idleActionToken !== token) return;
+    playRandomIdle();
+  };
+  const guard = setTimeout(finish, IDLE_ACTION_MAX_MS);
+  video.addEventListener('ended', finish);
 }
 
 function playClickAnimation() {
   if (state.clickPool.length === 0) return;
   state.isPlayingClick = true;
+  // 打断正在播放的动作动画：点击动画结束后由这里回到待机
+  state.idleActionToken = (state.idleActionToken || 0) + 1;
+  if (state.autoIdleTimer) { clearTimeout(state.autoIdleTimer); state.autoIdleTimer = null; }
 
-  const idx = Math.floor(Math.random() * state.clickPool.length);
-  const anim = state.clickPool[idx];
+  // 拖拽专用动画只在拖拽时播放，不参与单击随机
+  const reactions = state.clickPool.filter((a) => !DRAG_ANIM_PATTERN.test(a.name));
+  const pool = reactions.length > 0 ? reactions : state.clickPool;
+  const anim = pool[Math.floor(Math.random() * pool.length)];
   state.currentClickFile = anim.name;
   playVideo(anim.path, false);
 
@@ -548,7 +617,7 @@ function playClickAnimation() {
       video.removeEventListener('ended', onEnded);
       if (!state.isPlayingDrag) playRandomIdle();
     }
-  }, 5000);
+  }, 12000);
 }
 
 /**
