@@ -11,6 +11,8 @@
  * 只通过宿主 ctx 获取能力，删除本目录即可完全下线该功能。
  */
 
+const fs = require('fs');
+const path = require('path');
 const { startForegroundWatcher } = require('./foreground');
 const S = require('./scenes');
 
@@ -23,6 +25,8 @@ const SCENE_TTL = 3 * 60 * 1000;
 const SCENE_HEARTBEAT = 60 * 1000;
 /** 用户在场的判定：键鼠空闲少于这个秒数才触发吃饭 / 熬夜 / 节日事件 */
 const PRESENT_SECONDS = 60;
+/** 曲间短暂静音不算停止播放：最近这么久内出过声都算在放音乐 */
+const AUDIO_HOLD_MS = 15 * 1000;
 /** 两个时间事件之间至少间隔 */
 const EVENT_GAP = 2 * 60 * 1000;
 const LATE_NIGHT_EVERY = 30 * 60 * 1000;
@@ -33,6 +37,7 @@ const runtime = {
   watcherTitles: false,
   timer: null,
   lastExternal: { process: '', title: '' },
+  audioHeard: new Map(),   // 程序名 → 最近一次听到它出声的时间
   scene: null,
   pending: null,
   pendingSince: 0,
@@ -55,16 +60,17 @@ function idleSeconds(ctx) {
   return Number.isFinite(value) ? value : 0;
 }
 
-/** 把当前情景（可附带一次反应动画）发给桌宠 */
+/** 把当前情景（可附带一次反应动画）发给桌宠；动画名来自设置（留空用默认） */
 function sendScene(ctx, sceneId, once) {
   const fn = ctx.host && ctx.host.setPetActivity;
   if (typeof fn !== 'function') return;
-  const def = sceneId ? S.SCENES[sceneId] : null;
+  const loop = sceneId ? S.sceneAnims(sceneId, settingsOf(ctx)) : [];
   runtime.lastSentAt = Date.now();
-  if (!def && !once) { fn(null); return; }
+  if (loop.length === 0 && !once) { fn(null); return; }
   fn({
-    id: sceneId ? `scene-${sceneId}` : 'scene-event',
-    loop: def ? def.loop : [],
+    // id 带上动画列表：改了某个场景的动画后，桌宠会立即换成新动画
+    id: sceneId ? `scene-${sceneId}:${loop.join('|')}` : 'scene-event',
+    loop,
     once: once || undefined,
     priority: SCENE_PRIORITY,
     ttl: SCENE_TTL
@@ -74,6 +80,16 @@ function sendScene(ctx, sceneId, once) {
 function say(ctx, text) {
   const fn = ctx.host && ctx.host.showPetBubble;
   if (typeof fn === 'function') fn({ text, duration: 6000 });
+}
+
+/** 最近 AUDIO_HOLD_MS 内出过声的程序 */
+function soundingNow(now) {
+  const list = [];
+  for (const [name, at] of runtime.audioHeard) {
+    if (now - at <= AUDIO_HOLD_MS) list.push(name);
+    else runtime.audioHeard.delete(name);
+  }
+  return list;
 }
 
 function dayKey(date) {
@@ -89,7 +105,7 @@ function evaluate(ctx) {
   if (settings.enabled === false) return;
   const now = Date.now();
   const idle = idleSeconds(ctx);
-  const candidate = S.detectScene(runtime.lastExternal, idle, settings);
+  const candidate = S.detectScene({ ...runtime.lastExternal, audio: soundingNow(now) }, idle, settings);
 
   if (candidate !== runtime.scene) {
     // 发呆 / 睡着由空闲时间本身判定，进出都立即生效；其余场景要稳定一段时间才切换，避免切窗口时抽风
@@ -103,7 +119,8 @@ function evaluate(ctx) {
       const wokeUp = runtime.scene === 'sleep' && candidate !== 'sleep' && candidate !== 'drowsy';
       runtime.scene = candidate;
       runtime.pending = null;
-      sendScene(ctx, candidate, wokeUp ? '打瞌睡被惊醒' : undefined);
+      const wakeAnim = S.parseAnimList(settings.wakeAnim)[0] || S.DEFAULT_WAKE_ANIM;
+      sendScene(ctx, candidate, wokeUp ? wakeAnim : undefined);
       if (wokeUp) say(ctx, '你回来啦！👋');
       return;
     }
@@ -172,14 +189,19 @@ function startWatcher(ctx) {
   stopWatcher();
   const settings = settingsOf(ctx);
   runtime.watcherTitles = !!settings.readTitles;
+  runtime.watcherAudio = settings.backgroundMusic !== false;
   runtime.lastExternal = { process: '', title: '' };
+  runtime.audioHeard.clear();
   runtime.error = '';
   runtime.watcher = startForegroundWatcher({
     intervalMs: SAMPLE_MS,
     titles: runtime.watcherTitles,
+    audio: runtime.watcherAudio,
     onSample: (sample) => {
       // DeskPet 自己的窗口（设置 / 对话）在前台时，保持之前的判断
-      if (!S.isSelf(sample.process)) runtime.lastExternal = sample;
+      if (!S.isSelf(sample.process)) runtime.lastExternal = { process: sample.process, title: sample.title };
+      const now = Date.now();
+      for (const name of sample.audio || []) runtime.audioHeard.set(name, now);
     },
     onError: (e) => {
       runtime.error = (e && e.message) || '未知错误';
@@ -211,16 +233,59 @@ function startAll(ctx) {
   }, SAMPLE_MS);
 }
 
+/** 本机可用的动画名（assets/animations 下的 idle / click / scene 与 assets/thumb） */
+function availableAnimations(ctx) {
+  const root = path.join(ctx.dir, '..', '..', '..', 'assets');
+  const dirs = ['animations/scene', 'animations/idle', 'animations/click', 'thumb'];
+  const names = new Set();
+  for (const dir of dirs) {
+    try {
+      for (const f of fs.readdirSync(path.join(root, dir))) {
+        if (/\.webm$/i.test(f)) names.add(f.replace(/\.webm$/i, ''));
+      }
+    } catch (e) { /* 目录不存在就跳过 */ }
+  }
+  return [...names];
+}
+
+const ANIM_FIELDS = [
+  ['coding', '写代码'], ['study', '学习'], ['music', '听音乐'], ['video', '看视频'],
+  ['game', '打游戏'], ['drowsy', '发呆'], ['sleep', '睡着']
+];
+
+/** 设置页「检查动画名」：列出可用动画，并指出填写了但不存在的动画名（使用表单里未保存的值） */
+function animationCheckMessage(ctx, values) {
+  const settings = { ...settingsOf(ctx), ...(values && typeof values === 'object' ? values : {}) };
+  const available = availableAnimations(ctx);
+  const has = new Set(available);
+  const problems = [];
+  for (const [scene, label] of ANIM_FIELDS) {
+    const missing = S.sceneAnims(scene, settings).filter((n) => !has.has(n));
+    if (missing.length) problems.push(`${label}：${missing.join('、')}`);
+  }
+  const wake = S.parseAnimList(settings.wakeAnim)[0] || S.DEFAULT_WAKE_ANIM;
+  if (!has.has(wake)) problems.push(`醒来：${wake}`);
+  const head = problems.length
+    ? `⚠️ 这些动画名找不到（会被忽略）：${problems.join('；')}。`
+    : '✅ 所有场景的动画都能找到。';
+  return `${head}可用动画（${available.length} 个）：${available.join('、')}`;
+}
+
 /** 设置页「查看当前识别」：只展示给用户自己看 */
 function statusMessage(ctx) {
   const settings = settingsOf(ctx);
   if (settings.enabled === false) return '行为感知已关闭';
   const idle = Math.round(idleSeconds(ctx));
   const sample = runtime.lastExternal;
-  const scene = runtime.scene ? S.SCENES[runtime.scene].label : '普通闲置';
+  const scene = runtime.scene
+    ? `${S.SCENES[runtime.scene].label}（${S.sceneAnims(runtime.scene, settings).join('、')}）`
+    : '普通闲置';
   const parts = [
     `前台程序：${sample.process || '（未知）'}`,
     settings.readTitles ? `窗口标题：${sample.title || '（空）'}` : '窗口标题：未读取',
+    settings.backgroundMusic !== false
+      ? `正在出声：${soundingNow(Date.now()).join('、') || '无'}`
+      : '后台音乐识别：关闭',
     `键鼠空闲：${idle} 秒`,
     `当前场景：${scene}`
   ];
@@ -233,8 +298,9 @@ function statusMessage(ctx) {
 
 module.exports = {
   activate(ctx) {
-    ctx.onSettingsAction(async (actionId) => {
+    ctx.onSettingsAction(async (actionId, values) => {
       if (actionId === 'status') return { success: true, message: statusMessage(ctx) };
+      if (actionId === 'anims') return { success: true, message: animationCheckMessage(ctx, values) };
       return { success: false, error: `未实现的动作: ${actionId}` };
     });
 
@@ -247,8 +313,12 @@ module.exports = {
     ctx.onSettingsChanged(() => {
       const settings = settingsOf(ctx);
       if (settings.enabled === false) { stopAll(ctx); return; }
-      // 开关「读取窗口标题」或从关闭恢复时重启探测
-      if (!runtime.timer || runtime.watcherTitles !== !!settings.readTitles) startAll(ctx);
+      // 改了当前场景的动画：立即生效
+      if (runtime.scene) sendScene(ctx, runtime.scene);
+      // 开关「读取窗口标题」「后台音乐识别」或从关闭恢复时重启探测
+      if (!runtime.timer ||
+          runtime.watcherTitles !== !!settings.readTitles ||
+          runtime.watcherAudio !== (settings.backgroundMusic !== false)) startAll(ctx);
     });
 
     ctx.onDeactivate(() => stopAll(ctx));

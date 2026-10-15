@@ -469,6 +469,17 @@ check('行为感知：按程序名 / 空闲时间 / 标题判定场景', () => {
   assertEqual(detectScene(bili, 3, base), null, '未开启读取标题时不看标题');
   assertEqual(detectScene(bili, 3, { ...base, readTitles: true }), 'video', '开启后识别视频网站');
   assertEqual(detectScene({ process: 'MyGame', title: '' }, 3, { ...base, gameApps: 'mygame' }), 'game', '自定义程序列表');
+  const coding = { process: 'WindowsTerminal', title: '', audio: ['Spotify'] };
+  assertEqual(detectScene(coding, 3, base), 'music', '后台 Spotify 出声时算听音乐');
+  assertEqual(detectScene(coding, 200, base), 'music', '放音乐时不发呆');
+  assertEqual(detectScene(coding, 400, base), 'sleep', '离开太久仍会睡着');
+  assertEqual(detectScene(coding, 3, { ...base, backgroundMusic: false }), 'coding', '关闭后台音乐识别');
+  assertEqual(detectScene({ ...coding, audio: ['chrome'] }, 3, base), 'coding', '非音乐程序出声不算');
+  assertEqual(detectScene({ process: 'YuanShen', title: '', audio: ['Spotify'] }, 3, base), 'game', '打游戏优先于后台音乐');
+  const { sceneAnims } = require('../src/plugins/activity-sense/scenes');
+  assertEqual(sceneAnims('coding', {}).join('|'), '写代码|工作状态-忙碌点按', '默认动画');
+  assertEqual(sceneAnims('coding', { codingAnims: ' 撸猫.webm，悠闲哼歌 ' }).join('|'), '撸猫|悠闲哼歌', '自定义动画（中英文逗号、去 .webm）');
+  assertEqual(sceneAnims('coding', { codingAnims: '' }).join('|'), '写代码|工作状态-忙碌点按', '留空回退默认');
   assertEqual(isSelf('electron'), true, '自身窗口');
   assertEqual(festivalAt(new Date(2026, 8, 25)).id, 'mid-autumn', '2026 中秋');
   assertEqual(festivalAt(new Date(2026, 9, 15)), null, '普通日子');

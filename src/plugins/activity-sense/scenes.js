@@ -1,11 +1,11 @@
 /**
  * 场景判定（纯函数，不依赖 Electron，可单独测试）
  *
- * 输入：前台程序名 / 窗口标题（可选）/ 键鼠空闲秒数 / 设置
+ * 输入：前台程序名 / 窗口标题（可选）/ 正在出声的程序名 / 键鼠空闲秒数 / 设置
  * 输出：场景 id（coding / study / music / video / game / drowsy / sleep）或 null（普通闲置）
  */
 
-/** 场景 → 桌宠循环播放的动画（多个时按动画节奏轮换） */
+/** 场景 → 默认循环播放的动画（多个时按动画节奏轮换）；可在设置里用 <场景>Anims 覆盖 */
 const SCENES = {
   coding: { label: '写代码', loop: ['写代码', '工作状态-忙碌点按'] },
   study: { label: '学习 / 文档', loop: ['轻快记录', '深度思考碎碎念'] },
@@ -29,6 +29,24 @@ const DEFAULT_APPS = {
 const BROWSERS = ['chrome', 'msedge', 'firefox', 'brave', 'opera', 'vivaldi', '360se', 'qqbrowser', 'Google Chrome', 'Safari', 'Arc'];
 const DEFAULT_VIDEO_KEYWORDS = 'bilibili, 哔哩哔哩, YouTube, Netflix, 爱奇艺, 腾讯视频, 优酷, 抖音, Twitch, 斗鱼, 虎牙';
 
+/** 回来时（从睡着醒来）的默认反应动画 */
+const DEFAULT_WAKE_ANIM = '打瞌睡被惊醒';
+
+/** 「a, b\nc.webm」→ ['a', 'b', 'c']（保留大小写，去掉 .webm），用于动画名 */
+function parseAnimList(text) {
+  return String(text || '')
+    .split(/[,，\n]/)
+    .map((s) => s.trim().replace(/\.webm$/i, ''))
+    .filter(Boolean);
+}
+
+/** 某个场景实际使用的动画：设置里填了就用设置的，留空用默认 */
+function sceneAnims(sceneId, settings) {
+  const custom = parseAnimList(settings && settings[`${sceneId}Anims`]);
+  if (custom.length > 0) return custom;
+  return SCENES[sceneId] ? SCENES[sceneId].loop : [];
+}
+
 /** 「a, b\nc」→ ['a', 'b', 'c']（小写） */
 function parseList(text) {
   return String(text || '')
@@ -44,7 +62,7 @@ function isSelf(processName) {
 
 /**
  * 判定场景
- * @param {{ process: string, title: string }} sample
+ * @param {{ process: string, title: string, audio?: string[] }} sample  audio：正在出声的程序名
  * @param {number} idleSeconds 键鼠空闲秒数
  * @param {Object} settings 插件设置
  * @returns {string|null}
@@ -52,26 +70,31 @@ function isSelf(processName) {
 function detectScene(sample, idleSeconds, settings) {
   const awaySeconds = Math.max(60, (Number(settings.awayMinutes) || 5) * 60);
   const drowsySeconds = Math.min(120, awaySeconds / 2);
+  const listOf = (key) => parseList(settings[`${key}Apps`] != null ? settings[`${key}Apps`] : DEFAULT_APPS[key]);
+
+  // 后台在放音乐（音乐程序真的在出声）：前台是别的程序也算听音乐，并且不会「发呆打哈欠」
+  const sounding = Array.isArray(sample && sample.audio) ? sample.audio.map((s) => String(s).toLowerCase()) : [];
+  const musicPlaying = settings.backgroundMusic !== false && sounding.some((s) => listOf('music').includes(s));
+
   if (idleSeconds >= awaySeconds) return 'sleep';
-  if (idleSeconds >= drowsySeconds) return 'drowsy';
+  if (idleSeconds >= drowsySeconds && !musicPlaying) return 'drowsy';
 
   const name = String((sample && sample.process) || '').toLowerCase();
-  if (!name) return null;
+  const matches = (key) => !!name && listOf(key).includes(name);
 
-  const matches = (key) => parseList(settings[`${key}Apps`] != null ? settings[`${key}Apps`] : DEFAULT_APPS[key]).includes(name);
-
+  // 打游戏、看视频是「全神贯注」的场景，优先于后台音乐
   if (matches('game')) return 'game';
-  if (matches('coding')) return 'coding';
-  if (matches('study')) return 'study';
   if (matches('video')) return 'video';
-  if (matches('music')) return 'music';
-
   // 浏览器：只有用户开启了读取标题，才会按标题关键词判断是不是在看视频
-  if (settings.readTitles && BROWSERS.some((b) => b.toLowerCase() === name)) {
+  if (name && settings.readTitles && BROWSERS.some((b) => b.toLowerCase() === name)) {
     const title = String((sample && sample.title) || '').toLowerCase();
     const keywords = parseList(settings.videoKeywords != null ? settings.videoKeywords : DEFAULT_VIDEO_KEYWORDS);
     if (title && keywords.some((k) => title.includes(k))) return 'video';
   }
+  if (musicPlaying) return 'music';
+  if (matches('coding')) return 'coding';
+  if (matches('study')) return 'study';
+  if (matches('music')) return 'music';
   return null;
 }
 
@@ -121,6 +144,9 @@ function festivalAt(date) {
 
 module.exports = {
   SCENES,
+  DEFAULT_WAKE_ANIM,
+  parseAnimList,
+  sceneAnims,
   DEFAULT_APPS,
   DEFAULT_VIDEO_KEYWORDS,
   BROWSERS,
