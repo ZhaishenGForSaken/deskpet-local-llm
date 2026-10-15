@@ -487,6 +487,87 @@ body.platform-mac #title-btns {
   font-family: 'SF Mono', 'Consolas', monospace;
 }
 
+/* 插件设置：动画勾选器 */
+.anim-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.anim-picker summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.anim-picker summary::-webkit-details-marker { display: none; }
+
+.anim-picker-summary {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anim-picker-summary.warn { color: #ffb050; }
+
+.anim-picker-toggle {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent-light);
+  color: var(--accent-hover);
+}
+
+.anim-picker[open] .anim-picker-toggle::after { content: ' ▲'; }
+.anim-picker:not([open]) .anim-picker-toggle::after { content: ' ▼'; }
+
+.anim-picker-body {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 12px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.anim-picker-group {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.anim-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 8px;
+}
+
+.anim-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.anim-picker-item:hover { background: var(--bg-hover); }
+.anim-picker-item input { accent-color: var(--accent); }
+.anim-picker-item.missing { color: #ffb050; }
+
+.anim-picker-tip {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* 闲置动画的角色：待机 / 动作 */
 .anim-role {
   padding: 3px 6px;

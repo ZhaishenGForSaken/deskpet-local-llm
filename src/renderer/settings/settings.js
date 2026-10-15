@@ -776,7 +776,68 @@ function escapeAttr(text) {
 // 没有任何插件时，以下逻辑完全不执行，设置页与原来完全一致
 // ============================================================================
 
-const PLUGIN_FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select'];
+const PLUGIN_FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations'];
+
+/** 「a, b.webm，c」→ ['a', 'b', 'c'] */
+function splitAnimNames(value) {
+  return String(value || '').split(/[,，\n]/).map((s) => s.trim().replace(/\.webm$/i, '')).filter(Boolean);
+}
+
+/** 动画勾选器的外壳（具体选项在 bindPluginPanel 里按本机动画文件填充） */
+function animationPickerHtml(field, attrs) {
+  return `<details class="anim-picker" data-picker-for="${escapeAttr(field.key)}">
+      <summary><span class="anim-picker-summary"></span><span class="anim-picker-toggle">选择</span></summary>
+      <div class="anim-picker-body"></div>
+    </details>
+    <input type="hidden" ${attrs}>`;
+}
+
+/**
+ * 按本机动画文件填充勾选器：分组列出情景 / 闲置 / 点击动画；
+ * 已保存但找不到的动画名也列出来（标记为找不到），方便取消勾选
+ */
+function fillAnimationPicker(panel, field) {
+  const picker = panel.querySelector(`[data-picker-for="${field.key}"]`);
+  const input = panel.querySelector(`[data-field-key="${field.key}"]`);
+  if (!picker || !input) return;
+  const body = picker.querySelector('.anim-picker-body');
+  const summary = picker.querySelector('.anim-picker-summary');
+  const defaults = splitAnimNames(field.default);
+  const strip = (name) => String(name).replace(/\.webm$/i, '');
+  const groups = [
+    ['情景动画', (state.availableAnimations.scene || []).map((a) => strip(a.name))],
+    ['闲置动画', (state.availableAnimations.idle || []).map((a) => strip(a.name))],
+    ['点击 / 拖拽动画', (state.availableAnimations.click || []).map((a) => strip(a.name))]
+  ];
+  const known = new Set(groups.flatMap(([, names]) => names));
+  const type = field.single ? 'radio' : 'checkbox';
+  const group = `pick-${field.key}`;
+
+  const render = () => {
+    const selected = splitAnimNames(input.value);
+    const missing = selected.filter((n) => !known.has(n));
+    const item = (name, flag) => `<label class="anim-picker-item${flag ? ' missing' : ''}">
+        <input type="${type}" name="${escapeAttr(group)}" value="${escapeAttr(name)}" ${selected.includes(name) ? 'checked' : ''}>
+        <span>${escapeHtml(name)}${flag ? '（找不到）' : ''}</span>
+      </label>`;
+    body.innerHTML = (missing.length ? `<div class="anim-picker-group">⚠️ 已选但本机找不到</div><div class="anim-picker-grid">${missing.map((n) => item(n, true)).join('')}</div>` : '') +
+      groups.filter(([, names]) => names.length)
+        .map(([title, names]) => `<div class="anim-picker-group">${escapeHtml(title)}</div><div class="anim-picker-grid">${names.map((n) => item(n, false)).join('')}</div>`)
+        .join('') +
+      (field.single ? '' : '<div class="anim-picker-tip">勾选多个时按「动画素材 → 播放节奏」的间隔轮换；都不勾选则使用默认</div>');
+    summary.textContent = selected.length
+      ? `已选 ${selected.length} 个：${selected.join('、')}`
+      : `未选择，使用默认：${defaults.join('、') || '无'}`;
+    summary.classList.toggle('warn', missing.length > 0);
+  };
+
+  body.addEventListener('change', () => {
+    const checked = [...body.querySelectorAll('input:checked')].map((el) => el.value);
+    input.value = checked.join(', ');
+    render();
+  });
+  render();
+}
 
 /** 字段 id：只包含安全字符，可直接用于 getElementById */
 function pluginFieldId(pluginId, key) {
@@ -854,6 +915,9 @@ function buildPluginPanelHtml(section) {
         case 'textarea':
           control = `<textarea ${attrs} rows="${Number.isFinite(Number(field.rows)) ? Number(field.rows) : 3}"${placeholder}></textarea>`;
           break;
+        case 'animations':
+          control = animationPickerHtml(field, attrs);
+          break;
         case 'select': {
           const options = (Array.isArray(field.options) ? field.options : [])
             .map((opt) => `<option value="${escapeAttr(opt.value)}">${escapeHtml(opt.label)}</option>`)
@@ -917,6 +981,7 @@ async function bindPluginPanel(section, panel) {
       const value = values[field.key];
       input.value = value === undefined || value === null ? '' : String(value);
     }
+    if (field.type === 'animations') fillAnimationPicker(panel, field);
   }
 
   panel.querySelector('[data-plugin-save]')?.addEventListener('click', () => savePluginSettings(section, panel));

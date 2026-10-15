@@ -30,7 +30,8 @@ const CHANNEL_PREFIX = 'plugins:';
 /** 插件自有 IPC 的通道前缀（完整形如 plugin:<id>:<channel>） */
 const PLUGIN_CHANNEL_PREFIX = 'plugin:';
 /** 允许的设置字段类型 */
-const FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select'];
+// animations：从本机动画文件里勾选（值为逗号分隔的动画名；single 为 true 时只能选一个）
+const FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations'];
 /** 插件 id 规范：字母/数字开头，允许 . _ - */
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]*$/i;
 /** 设置字段 key 规范：只允许字母数字 _ -（可直接用于 DOM 选择器） */
@@ -78,6 +79,7 @@ function sanitizeFields(rawFields) {
     }
     if (type === 'boolean') field.default = raw.default === true;
     if (type === 'textarea') field.rows = Number.isFinite(Number(raw.rows)) ? Number(raw.rows) : 3;
+    if (type === 'animations') field.single = raw.single === true;
     if (type === 'select') {
       field.options = (Array.isArray(raw.options) ? raw.options : [])
         .filter((o) => o && typeof o === 'object' && o.value !== undefined)

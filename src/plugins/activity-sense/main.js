@@ -11,8 +11,6 @@
  * 只通过宿主 ctx 获取能力，删除本目录即可完全下线该功能。
  */
 
-const fs = require('fs');
-const path = require('path');
 const { startForegroundWatcher } = require('./foreground');
 const S = require('./scenes');
 
@@ -233,44 +231,6 @@ function startAll(ctx) {
   }, SAMPLE_MS);
 }
 
-/** 本机可用的动画名（assets/animations 下的 idle / click / scene 与 assets/thumb） */
-function availableAnimations(ctx) {
-  const root = path.join(ctx.dir, '..', '..', '..', 'assets');
-  const dirs = ['animations/scene', 'animations/idle', 'animations/click', 'thumb'];
-  const names = new Set();
-  for (const dir of dirs) {
-    try {
-      for (const f of fs.readdirSync(path.join(root, dir))) {
-        if (/\.webm$/i.test(f)) names.add(f.replace(/\.webm$/i, ''));
-      }
-    } catch (e) { /* 目录不存在就跳过 */ }
-  }
-  return [...names];
-}
-
-const ANIM_FIELDS = [
-  ['coding', '写代码'], ['study', '学习'], ['music', '听音乐'], ['video', '看视频'],
-  ['game', '打游戏'], ['drowsy', '发呆'], ['sleep', '睡着']
-];
-
-/** 设置页「检查动画名」：列出可用动画，并指出填写了但不存在的动画名（使用表单里未保存的值） */
-function animationCheckMessage(ctx, values) {
-  const settings = { ...settingsOf(ctx), ...(values && typeof values === 'object' ? values : {}) };
-  const available = availableAnimations(ctx);
-  const has = new Set(available);
-  const problems = [];
-  for (const [scene, label] of ANIM_FIELDS) {
-    const missing = S.sceneAnims(scene, settings).filter((n) => !has.has(n));
-    if (missing.length) problems.push(`${label}：${missing.join('、')}`);
-  }
-  const wake = S.parseAnimList(settings.wakeAnim)[0] || S.DEFAULT_WAKE_ANIM;
-  if (!has.has(wake)) problems.push(`醒来：${wake}`);
-  const head = problems.length
-    ? `⚠️ 这些动画名找不到（会被忽略）：${problems.join('；')}。`
-    : '✅ 所有场景的动画都能找到。';
-  return `${head}可用动画（${available.length} 个）：${available.join('、')}`;
-}
-
 /** 设置页「查看当前识别」：只展示给用户自己看 */
 function statusMessage(ctx) {
   const settings = settingsOf(ctx);
@@ -298,9 +258,8 @@ function statusMessage(ctx) {
 
 module.exports = {
   activate(ctx) {
-    ctx.onSettingsAction(async (actionId, values) => {
+    ctx.onSettingsAction(async (actionId) => {
       if (actionId === 'status') return { success: true, message: statusMessage(ctx) };
-      if (actionId === 'anims') return { success: true, message: animationCheckMessage(ctx, values) };
       return { success: false, error: `未实现的动作: ${actionId}` };
     });
 

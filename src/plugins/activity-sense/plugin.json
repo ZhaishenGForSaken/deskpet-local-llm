@@ -10,7 +10,7 @@
     "settings": {
       "title": "行为感知",
       "icon": "🧭",
-      "description": "程序名和窗口标题只在本机内存里用于匹配场景：不写盘、不记日志、不发给任何模型。每个场景播放什么动画都可以改；识别不准时，把程序名加到下面对应的列表里即可（点「查看当前识别」能看到当前前台的程序名）。",
+      "description": "程序名和窗口标题只在本机内存里用于匹配场景：不写盘、不记日志、不发给任何模型。每个场景播放什么动画都可以勾选；识别不准时，把程序名加到下面对应的列表里即可（点「查看当前识别」能看到当前前台的程序名）。",
       "fields": [
         {
           "key": "enabled",
@@ -77,66 +77,59 @@
         {
           "key": "codingAnims",
           "label": "「写代码」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "写代码, 工作状态-忙碌点按",
-          "placeholder": "写代码, 工作状态-忙碌点按",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "studyAnims",
           "label": "「学习 / 文档」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "轻快记录, 深度思考碎碎念",
-          "placeholder": "轻快记录, 深度思考碎碎念",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "musicAnims",
           "label": "「听音乐」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "小提琴演奏, 悠闲哼歌",
-          "placeholder": "小提琴演奏, 悠闲哼歌",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "videoAnims",
           "label": "「看视频」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "撸猫, 悠闲哼歌",
-          "placeholder": "撸猫, 悠闲哼歌",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "gameAnims",
           "label": "「打游戏」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "玩游戏气急败坏",
-          "placeholder": "玩游戏气急败坏",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "drowsyAnims",
           "label": "「发呆」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "哈欠连天",
-          "placeholder": "哈欠连天",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "sleepAnims",
           "label": "「离开 / 睡着」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "原地小憩沉眠",
-          "placeholder": "原地小憩沉眠",
-          "hint": "动画名（不带 .webm），多个用逗号分隔、按「动画素材 → 播放节奏」的间隔轮换；留空用默认。点下方「检查动画名」查看可用动画"
+          "hint": "勾选这个场景要播放的动画（本机 assets 里的 .webm），多个时轮换；都不勾选使用默认"
         },
         {
           "key": "wakeAnim",
           "label": "「回来了」的动画",
-          "type": "text",
+          "type": "animations",
           "default": "打瞌睡被惊醒",
-          "placeholder": "打瞌睡被惊醒",
-          "hint": "从睡着状态回来时播放一次"
+          "hint": "从睡着状态回来时播放一次（单选）",
+          "single": true
         },
         {
           "key": "codingApps",
@@ -191,11 +184,6 @@
         {
           "id": "status",
           "label": "🔍 查看当前识别",
-          "style": "secondary"
-        },
-        {
-          "id": "anims",
-          "label": "📋 检查动画名",
           "style": "secondary"
         }
       ]
