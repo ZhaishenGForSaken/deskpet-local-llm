@@ -575,7 +575,9 @@ function pickAnimation(list) {
 /** 情景默认最长持续时间：插件异常没有收尾时，桌宠也会自己回到闲置 */
 const ACTIVITY_DEFAULT_TTL = 5 * 60 * 1000;
 
-state.activity = null;              // 当前生效的情景 { source, id, loop: [动画], priority }，存在时代替闲置节奏
+state.activity = null;              // 当前生效的情景 { source, id, loop: [动画], priority, mode }
+                                    //   mode=loop：一直循环情景动画（对话中、睡着）
+                                    //   mode=ambient：平时仍循环待机，情景动画代替「动作」按播放节奏偶尔出现
 state.activityLayers = new Map();   // 来源（插件 id）→ 情景；优先级最高的生效（对话 10 > 行为感知 1）
 state.allAnimations = [];
 
@@ -597,8 +599,9 @@ function refreshActivity() {
 
 /**
  * 某个来源进入 / 退出情景
- * @param {{ source?: string, activity: null | { id?: string, loop?: string[], once?: string, priority?: number, ttl?: number } }} payload
- *   loop：情景期间循环播放的动画（多个时按节奏轮换）；once：先播一遍的反应动画；activity 为 null：撤销该来源的情景
+ * @param {{ source?: string, activity: null | { id?: string, loop?: string[], once?: string, priority?: number, ttl?: number, mode?: 'loop'|'ambient' } }} payload
+ *   loop：情景动画；mode=loop 时一直循环，mode=ambient 时作为动作动画偶尔播放
+ *   once：先播一遍的反应动画；activity 为 null：撤销该来源的情景
  */
 function applyActivity(payload) {
   const source = payload && typeof payload.source === 'string' ? payload.source : 'default';
@@ -614,7 +617,8 @@ function applyActivity(payload) {
   const priority = Number(activity && activity.priority) || 0;
 
   if (loop.length > 0) {
-    const layer = { source, id: String(activity.id || ''), loop, priority, timer: null };
+    const mode = activity.mode === 'ambient' ? 'ambient' : 'loop';
+    const layer = { source, id: String(activity.id || ''), loop, priority, mode, timer: null };
     const ttl = Number(activity.ttl) > 0 ? Number(activity.ttl) : ACTIVITY_DEFAULT_TTL;
     layer.timer = setTimeout(() => {
       if (state.activityLayers.get(source) !== layer) return;
@@ -644,7 +648,7 @@ function playRandomIdle() {
   if (state.autoIdleTimer) { clearTimeout(state.autoIdleTimer); state.autoIdleTimer = null; }
   state.idleActionToken = (state.idleActionToken || 0) + 1;
 
-  if (state.activity) {
+  if (state.activity && state.activity.mode !== 'ambient') {
     const loop = state.activity.loop;
     const keep = loop.find((a) => a.name === state.currentIdleFile && elements.video.loop === true);
     if (!keep) {
@@ -659,7 +663,10 @@ function playRandomIdle() {
 
   if (state.idlePool.length === 0) { createPlaceholderAnimation(); return; }
 
-  const { base, actions } = splitIdlePool();
+  const split = splitIdlePool();
+  const base = split.base;
+  // 轻量情景（例如写代码）：待机照常，动作动画换成情景动画
+  const actions = state.activity && state.activity.mode === 'ambient' ? state.activity.loop : split.actions;
   const anim = pickAnimation(base);
   if (anim.name !== state.currentIdleFile || elements.video.loop !== true) {
     state.currentIdleFile = anim.name;

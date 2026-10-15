@@ -776,7 +776,7 @@ function escapeAttr(text) {
 // 没有任何插件时，以下逻辑完全不执行，设置页与原来完全一致
 // ============================================================================
 
-const PLUGIN_FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations'];
+const PLUGIN_FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations', 'table'];
 
 /** 「a, b.webm，c」→ ['a', 'b', 'c'] */
 function splitAnimNames(value) {
@@ -785,24 +785,41 @@ function splitAnimNames(value) {
 
 /** 动画勾选器的外壳（具体选项在 bindPluginPanel 里按本机动画文件填充） */
 function animationPickerHtml(field, attrs) {
-  return `<details class="anim-picker" data-picker-for="${escapeAttr(field.key)}">
+  return `${pickerShellHtml(`data-picker-for="${escapeAttr(field.key)}"`)}
+    <input type="hidden" ${attrs}>`;
+}
+
+function pickerShellHtml(extraAttrs) {
+  return `<details class="anim-picker" ${extraAttrs}>
       <summary><span class="anim-picker-summary"></span><span class="anim-picker-toggle">选择</span></summary>
       <div class="anim-picker-body"></div>
-    </details>
-    <input type="hidden" ${attrs}>`;
+    </details>`;
+}
+
+/** 插件设置字段里的动画勾选器 */
+function fillAnimationPicker(panel, field) {
+  const picker = panel.querySelector(`[data-picker-for="${field.key}"]`);
+  const input = panel.querySelector(`[data-field-key="${field.key}"]`);
+  if (!picker || !input) return;
+  bindAnimationPicker(picker, input, {
+    defaults: splitAnimNames(field.default),
+    single: field.single,
+    group: `pick-${field.key}`
+  });
 }
 
 /**
  * 按本机动画文件填充勾选器：分组列出情景 / 闲置 / 点击动画；
  * 已保存但找不到的动画名也列出来（标记为找不到），方便取消勾选
+ * @param {Element} picker details 外壳
+ * @param {HTMLInputElement} input 保存值的隐藏输入框（逗号分隔的动画名）
+ * @param {{ defaults?: string[], single?: boolean, group: string, onChange?: () => void }} options
  */
-function fillAnimationPicker(panel, field) {
-  const picker = panel.querySelector(`[data-picker-for="${field.key}"]`);
-  const input = panel.querySelector(`[data-field-key="${field.key}"]`);
-  if (!picker || !input) return;
+function bindAnimationPicker(picker, input, options) {
+  const field = { single: !!options.single };
   const body = picker.querySelector('.anim-picker-body');
   const summary = picker.querySelector('.anim-picker-summary');
-  const defaults = splitAnimNames(field.default);
+  const defaults = options.defaults || [];
   const strip = (name) => String(name).replace(/\.webm$/i, '');
   const groups = [
     ['情景动画', (state.availableAnimations.scene || []).map((a) => strip(a.name))],
@@ -811,7 +828,7 @@ function fillAnimationPicker(panel, field) {
   ];
   const known = new Set(groups.flatMap(([, names]) => names));
   const type = field.single ? 'radio' : 'checkbox';
-  const group = `pick-${field.key}`;
+  const group = options.group;
 
   const render = () => {
     const selected = splitAnimNames(input.value);
@@ -827,7 +844,7 @@ function fillAnimationPicker(panel, field) {
       (field.single ? '' : '<div class="anim-picker-tip">勾选多个时按「动画素材 → 播放节奏」的间隔轮换；都不勾选则使用默认</div>');
     summary.textContent = selected.length
       ? `已选 ${selected.length} 个：${selected.join('、')}`
-      : `未选择，使用默认：${defaults.join('、') || '无'}`;
+      : (defaults.length ? `未选择，使用默认：${defaults.join('、')}` : '未选择');
     summary.classList.toggle('warn', missing.length > 0);
   };
 
@@ -835,7 +852,86 @@ function fillAnimationPicker(panel, field) {
     const checked = [...body.querySelectorAll('input:checked')].map((el) => el.value);
     input.value = checked.join(', ');
     render();
+    if (typeof options.onChange === 'function') options.onChange();
   });
+  render();
+}
+
+let tableSeq = 0;
+
+/**
+ * table 字段：每行一张卡片，可添加 / 删除 / 上移 / 下移；值以 JSON 数组存在隐藏输入框里
+ */
+function fillTableField(panel, field) {
+  const box = panel.querySelector(`[data-table-for="${field.key}"]`);
+  const input = panel.querySelector(`[data-field-key="${field.key}"]`);
+  if (!box || !input) return;
+  const columns = Array.isArray(field.columns) ? field.columns : [];
+  let rows = [];
+  try { rows = JSON.parse(input.value || '[]'); } catch (e) { rows = []; }
+  if (!Array.isArray(rows)) rows = [];
+
+  const save = () => { input.value = JSON.stringify(rows); };
+
+  const render = () => {
+    const seq = ++tableSeq;
+    box.innerHTML = rows.map((row, i) => `
+      <div class="table-row" data-row="${i}">
+        <div class="table-row-head">
+          <span class="table-row-title">#${i + 1} ${escapeHtml(row[columns[0] && columns[0].key] || '')}</span>
+          <button type="button" class="table-btn" data-op="up" ${i === 0 ? 'disabled' : ''} title="上移（越靠前越优先）">↑</button>
+          <button type="button" class="table-btn" data-op="down" ${i === rows.length - 1 ? 'disabled' : ''} title="下移">↓</button>
+          <button type="button" class="table-btn danger" data-op="delete" title="删除">🗑</button>
+        </div>
+        ${columns.map((col) => `
+          <div class="table-cell">
+            <span class="table-cell-label">${escapeHtml(col.label)}</span>
+            ${col.type === 'animations'
+              ? `${pickerShellHtml(`data-cell="${escapeAttr(col.key)}"`)}<input type="hidden" class="table-cell-input" data-col="${escapeAttr(col.key)}" value="${escapeAttr(row[col.key] || '')}">`
+              : `<input type="text" class="table-cell-input" data-col="${escapeAttr(col.key)}" value="${escapeAttr(row[col.key] || '')}" placeholder="${escapeAttr(col.placeholder || '')}">`}
+          </div>`).join('')}
+      </div>`).join('') +
+      `${rows.length ? '' : '<div class="table-empty">还没有规则</div>'}
+      <button type="button" class="btn btn-secondary table-add">${escapeHtml(field.addLabel || '＋ 添加一行')}</button>`;
+
+    box.querySelectorAll('.table-row').forEach((rowEl) => {
+      const i = Number(rowEl.dataset.row);
+      rowEl.querySelectorAll('input.table-cell-input[type="text"]').forEach((el) => {
+        el.addEventListener('input', () => {
+          rows[i][el.dataset.col] = el.value;
+          save();
+          if (columns[0] && el.dataset.col === columns[0].key) {
+            rowEl.querySelector('.table-row-title').textContent = `#${i + 1} ${el.value}`;
+          }
+        });
+      });
+      rowEl.querySelectorAll('.anim-picker[data-cell]').forEach((picker) => {
+        const col = picker.dataset.cell;
+        const hidden = rowEl.querySelector(`input.table-cell-input[data-col="${col}"]`);
+        bindAnimationPicker(picker, hidden, {
+          group: `table-${field.key}-${seq}-${i}-${col}`,
+          onChange: () => { rows[i][col] = hidden.value; save(); }
+        });
+      });
+      rowEl.querySelectorAll('.table-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const op = btn.dataset.op;
+          if (op === 'delete') rows.splice(i, 1);
+          if (op === 'up' && i > 0) [rows[i - 1], rows[i]] = [rows[i], rows[i - 1]];
+          if (op === 'down' && i < rows.length - 1) [rows[i + 1], rows[i]] = [rows[i], rows[i + 1]];
+          save();
+          render();
+        });
+      });
+    });
+    box.querySelector('.table-add').addEventListener('click', () => {
+      const row = {};
+      for (const col of columns) row[col.key] = '';
+      rows.push(row);
+      save();
+      render();
+    });
+  };
   render();
 }
 
@@ -918,6 +1014,9 @@ function buildPluginPanelHtml(section) {
         case 'animations':
           control = animationPickerHtml(field, attrs);
           break;
+        case 'table':
+          control = `<div class="table-field" data-table-for="${escapeAttr(field.key)}"></div><input type="hidden" ${attrs}>`;
+          break;
         case 'select': {
           const options = (Array.isArray(field.options) ? field.options : [])
             .map((opt) => `<option value="${escapeAttr(opt.value)}">${escapeHtml(opt.label)}</option>`)
@@ -982,6 +1081,7 @@ async function bindPluginPanel(section, panel) {
       input.value = value === undefined || value === null ? '' : String(value);
     }
     if (field.type === 'animations') fillAnimationPicker(panel, field);
+    if (field.type === 'table') fillTableField(panel, field);
   }
 
   panel.querySelector('[data-plugin-save]')?.addEventListener('click', () => savePluginSettings(section, panel));

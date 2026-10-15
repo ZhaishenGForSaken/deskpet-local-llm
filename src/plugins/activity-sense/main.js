@@ -28,6 +28,12 @@ const AUDIO_HOLD_MS = 15 * 1000;
 /** 两个时间事件之间至少间隔 */
 const EVENT_GAP = 2 * 60 * 1000;
 const LATE_NIGHT_EVERY = 30 * 60 * 1000;
+/** 需要「久坐提醒」的场景：写代码 / 学习 / 打游戏 / 自定义场景 */
+const LONG_SESSION_SCENES = ['coding', 'study', 'game'];
+
+/** 总线 topic：其它插件（例如 AI 对话）可以订阅 */
+const TOPIC_SCENE = 'activity.scene';
+const TOPIC_MILESTONE = 'activity.milestone';
 const FESTIVAL_EVERY = 60 * 60 * 1000;
 
 const runtime = {
@@ -37,6 +43,8 @@ const runtime = {
   lastExternal: { process: '', title: '' },
   audioHeard: new Map(),   // 程序名 → 最近一次听到它出声的时间
   scene: null,
+  sceneSince: 0,
+  milestonesFired: 0,
   pending: null,
   pendingSince: 0,
   lastSentAt: 0,
@@ -58,17 +66,34 @@ function idleSeconds(ctx) {
   return Number.isFinite(value) ? value : 0;
 }
 
+/** 发呆 / 睡着本身就是安静的状态，始终持续循环 */
+const CALM_SCENES = ['drowsy', 'sleep'];
+
+/**
+ * 场景动画频率：
+ *   quiet      安静：只在进入场景时播一次，之后按普通闲置节奏
+ *   ambient    适中（默认）：平时循环待机，情景动画代替「动作」按播放节奏偶尔出现
+ *   continuous 持续：一直循环情景动画
+ */
+function sceneMode(sceneId, settings) {
+  if (CALM_SCENES.includes(sceneId)) return 'continuous';
+  return ['quiet', 'ambient', 'continuous'].includes(settings.sceneMode) ? settings.sceneMode : 'ambient';
+}
+
 /** 把当前情景（可附带一次反应动画）发给桌宠；动画名来自设置（留空用默认） */
 function sendScene(ctx, sceneId, once) {
   const fn = ctx.host && ctx.host.setPetActivity;
   if (typeof fn !== 'function') return;
-  const loop = sceneId ? S.sceneAnims(sceneId, settingsOf(ctx)) : [];
+  const settings = settingsOf(ctx);
+  const mode = sceneId ? sceneMode(sceneId, settings) : 'quiet';
+  const loop = sceneId && mode !== 'quiet' ? S.sceneAnims(sceneId, settings) : [];
   runtime.lastSentAt = Date.now();
   if (loop.length === 0 && !once) { fn(null); return; }
   fn({
-    // id 带上动画列表：改了某个场景的动画后，桌宠会立即换成新动画
-    id: sceneId ? `scene-${sceneId}:${loop.join('|')}` : 'scene-event',
+    // id 带上动画列表与模式：改了场景动画或频率后，桌宠会立即生效
+    id: sceneId ? `scene-${sceneId}:${mode}:${loop.join('|')}` : 'scene-event',
     loop,
+    mode: mode === 'ambient' ? 'ambient' : 'loop',
     once: once || undefined,
     priority: SCENE_PRIORITY,
     ttl: SCENE_TTL
@@ -112,13 +137,25 @@ function evaluate(ctx) {
       runtime.pending = candidate;
       runtime.pendingSince = now;
     }
-    const switchMs = Math.max(0, Number(settings.switchSeconds) || 30) * 1000;
+    // 注意 0 是合法值（立即切换），不能用 || 兜底
+    const switchSeconds = Number(settings.switchSeconds);
+    const switchMs = Math.max(0, Number.isFinite(switchSeconds) ? switchSeconds : 30) * 1000;
     if (immediate || now - runtime.pendingSince >= switchMs) {
       const wokeUp = runtime.scene === 'sleep' && candidate !== 'sleep' && candidate !== 'drowsy';
       runtime.scene = candidate;
+      runtime.sceneSince = now;
+      runtime.milestonesFired = 0;
       runtime.pending = null;
+      publishScene(ctx, settings);
       const wakeAnim = S.parseAnimList(settings.wakeAnim)[0] || S.DEFAULT_WAKE_ANIM;
-      sendScene(ctx, candidate, wokeUp ? wakeAnim : undefined);
+      // 进入新场景时先播一次该场景的动画打个招呼（持续模式本来就在循环，不需要）
+      let greet;
+      if (wokeUp) greet = wakeAnim;
+      else if (candidate && !CALM_SCENES.includes(candidate) && sceneMode(candidate, settings) !== 'continuous') {
+        const anims = S.sceneAnims(candidate, settings);
+        greet = anims[Math.floor(Math.random() * anims.length)];
+      }
+      sendScene(ctx, candidate, greet);
       if (wokeUp) say(ctx, '你回来啦！👋');
       return;
     }
@@ -127,7 +164,48 @@ function evaluate(ctx) {
   }
 
   if (runtime.scene && now - runtime.lastSentAt >= SCENE_HEARTBEAT) sendScene(ctx, runtime.scene);
+  if (longSession(ctx, settings, now)) return;
   timeEvents(ctx, settings, idle, now);
+}
+
+/** 把当前场景发布到插件总线（只有场景名和开始时间，不含程序名和标题） */
+function publishScene(ctx, settings) {
+  if (!ctx.bus) return;
+  ctx.bus.publish(TOPIC_SCENE, {
+    scene: runtime.scene,
+    label: S.sceneLabel(runtime.scene, settings),
+    since: runtime.sceneSince
+  });
+}
+
+function formatMinutes(minutes) {
+  if (minutes < 60) return `${minutes} 分钟`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+}
+
+/**
+ * 久坐提醒：同一个专注场景每持续 N 分钟提醒一次。
+ * 先发到总线让 AI 对话用本地模型生成一句话；没有订阅者时用内置文案。
+ * @returns {boolean} 本轮是否触发了提醒
+ */
+function longSession(ctx, settings, now) {
+  const every = Math.max(0, Number(settings.longSessionMinutes) || 0);
+  const scene = runtime.scene;
+  if (!every || !scene || !(LONG_SESSION_SCENES.includes(scene) || scene.startsWith('custom:'))) return false;
+  if (now - runtime.lastEventAt < EVENT_GAP) return false;
+  const minutes = Math.floor((now - runtime.sceneSince) / 60000);
+  const due = Math.floor(minutes / every);
+  if (due <= runtime.milestonesFired) return false;
+
+  runtime.milestonesFired = due;
+  runtime.lastEventAt = now;
+  const label = S.sceneLabel(scene, settings);
+  const payload = { scene, label, minutes: due * every };
+  const delivered = ctx.bus ? ctx.bus.publish(TOPIC_MILESTONE, payload) : 0;
+  if (!delivered) say(ctx, `已经「${label}」${formatMinutes(payload.minutes)}了，起来活动一下、喝口水吧 🧘`);
+  return true;
 }
 
 /** 吃饭 / 熬夜 / 节日：只在用户在场时触发，彼此至少间隔几分钟 */
@@ -215,7 +293,9 @@ function stopAll(ctx) {
   runtime.timer = null;
   if (runtime.scene) sendScene(ctx, null);
   runtime.scene = null;
+  runtime.sceneSince = 0;
   runtime.pending = null;
+  if (ctx.bus) ctx.bus.publish(TOPIC_SCENE, { scene: null, label: '普通闲置', since: Date.now() });
 }
 
 function startAll(ctx) {
@@ -238,7 +318,7 @@ function statusMessage(ctx) {
   const idle = Math.round(idleSeconds(ctx));
   const sample = runtime.lastExternal;
   const scene = runtime.scene
-    ? `${S.SCENES[runtime.scene].label}（${S.sceneAnims(runtime.scene, settings).join('、')}）`
+    ? `${S.sceneLabel(runtime.scene, settings)}（${S.sceneAnims(runtime.scene, settings).join('、') || '无动画'}，已持续 ${formatMinutes(Math.floor((Date.now() - runtime.sceneSince) / 60000))}）`
     : '普通闲置';
   const parts = [
     `前台程序：${sample.process || '（未知）'}`,
@@ -250,7 +330,7 @@ function statusMessage(ctx) {
     `当前场景：${scene}`
   ];
   if (runtime.pending !== null && runtime.pending !== runtime.scene) {
-    parts.push(`即将切换到：${runtime.pending ? S.SCENES[runtime.pending].label : '普通闲置'}`);
+    parts.push(`即将切换到：${S.sceneLabel(runtime.pending, settings)}`);
   }
   if (runtime.error) parts.push(`⚠️ ${runtime.error}`);
   return parts.join('；');

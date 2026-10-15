@@ -31,7 +31,28 @@ const CHANNEL_PREFIX = 'plugins:';
 const PLUGIN_CHANNEL_PREFIX = 'plugin:';
 /** 允许的设置字段类型 */
 // animations：从本机动画文件里勾选（值为逗号分隔的动画名；single 为 true 时只能选一个）
-const FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations'];
+// table：可增删排序的多行表格（值为 JSON 数组字符串；columns 定义每列，列类型为 text / animations）
+const FIELD_TYPES = ['text', 'password', 'number', 'boolean', 'textarea', 'select', 'animations', 'table'];
+const TABLE_COLUMN_TYPES = ['text', 'animations'];
+const TABLE_MAX_ROWS = 50;
+
+/** 把表格值规范成 JSON 数组字符串：只保留声明的列、值转字符串、限制行数 */
+function normalizeTableValue(columns, value) {
+  let rows = value;
+  if (typeof rows === 'string') {
+    try { rows = JSON.parse(rows || '[]'); } catch (e) { rows = []; }
+  }
+  if (!Array.isArray(rows)) rows = [];
+  const out = rows
+    .filter((row) => row && typeof row === 'object')
+    .slice(0, TABLE_MAX_ROWS)
+    .map((row) => {
+      const clean = {};
+      for (const col of columns) clean[col.key] = row[col.key] === undefined || row[col.key] === null ? '' : String(row[col.key]).slice(0, 500);
+      return clean;
+    });
+  return JSON.stringify(out);
+}
 /** 插件 id 规范：字母/数字开头，允许 . _ - */
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]*$/i;
 /** 设置字段 key 规范：只允许字母数字 _ -（可直接用于 DOM 选择器） */
@@ -80,6 +101,18 @@ function sanitizeFields(rawFields) {
     if (type === 'boolean') field.default = raw.default === true;
     if (type === 'textarea') field.rows = Number.isFinite(Number(raw.rows)) ? Number(raw.rows) : 3;
     if (type === 'animations') field.single = raw.single === true;
+    if (type === 'table') {
+      field.columns = (Array.isArray(raw.columns) ? raw.columns : [])
+        .filter((c) => c && typeof c.key === 'string' && SAFE_KEY.test(c.key))
+        .map((c) => ({
+          key: c.key,
+          label: c.label ? String(c.label) : c.key,
+          type: TABLE_COLUMN_TYPES.includes(c.type) ? c.type : 'text',
+          placeholder: c.placeholder ? String(c.placeholder) : ''
+        }));
+      field.addLabel = raw.addLabel ? String(raw.addLabel) : '＋ 添加一行';
+      field.default = normalizeTableValue(field.columns, raw.default);
+    }
     if (type === 'select') {
       field.options = (Array.isArray(raw.options) ? raw.options : [])
         .filter((o) => o && typeof o === 'object' && o.value !== undefined)
@@ -154,6 +187,9 @@ function createPluginManager(options = {}) {
   const reports = [];
   let loaded = false;
   let registryRegistered = false;
+  /** 插件间消息总线：topic -> [{ owner, fn }]；以及每个 topic 最近一次发布的数据 */
+  const busSubscribers = new Map();
+  const busLatest = new Map();
 
   const tag = (id) => `[插件:${id}]`;
 
@@ -266,6 +302,8 @@ function createPluginManager(options = {}) {
           const max = field.max === undefined ? Infinity : field.max;
           return Math.min(max, Math.max(min, num));
         }
+        case 'table':
+          return normalizeTableValue(field.columns, value);
         case 'select': {
           const allowed = field.options.map((o) => o.value);
           const str = value === undefined || value === null ? '' : String(value);
@@ -389,6 +427,36 @@ function createPluginManager(options = {}) {
 
       createWindow,
 
+      /**
+       * 插件间消息总线（松耦合：发布方不需要知道谁在订阅，任何一方缺席都不影响另一方）
+       *   publish(topic, data) → 收到消息的订阅者数量（不含自己）
+       *   subscribe(topic, fn) → fn(data, { from, topic })；插件卸载时自动退订
+       *   latest(topic)        → 该 topic 最近一次发布的数据，没有则为 null
+       */
+      bus: {
+        publish(topic, data) {
+          const key = String(topic || '');
+          if (!key) return 0;
+          busLatest.set(key, data === undefined ? null : data);
+          let delivered = 0;
+          for (const sub of [...(busSubscribers.get(key) || [])]) {
+            if (sub.owner === id) continue;
+            try { sub.fn(data, { from: id, topic: key }); delivered += 1; } catch (e) { log.warn(tag(sub.owner), `总线消息处理异常 [${key}]:`, e.message); }
+          }
+          return delivered;
+        },
+        subscribe(topic, fn) {
+          const key = String(topic || '');
+          if (!key || typeof fn !== 'function') return;
+          if (!busSubscribers.has(key)) busSubscribers.set(key, []);
+          busSubscribers.get(key).push({ owner: id, fn });
+        },
+        latest(topic) {
+          const key = String(topic || '');
+          return busLatest.has(key) ? busLatest.get(key) : null;
+        }
+      },
+
       settings: { get: getSettings, set: setSettings },
 
       /** 菜单项被点击时回调 (command, payload) */
@@ -472,6 +540,13 @@ function createPluginManager(options = {}) {
       try { if (typeof ipcMain.removeAllListeners === 'function') ipcMain.removeAllListeners(channel); } catch (e) { /* 忽略 */ }
     }
     record.channels.clear();
+
+    // 退订该插件的总线订阅
+    for (const [topic, subs] of busSubscribers) {
+      const kept = subs.filter((s) => s.owner !== record.id);
+      if (kept.length) busSubscribers.set(topic, kept);
+      else busSubscribers.delete(topic);
+    }
 
     for (const win of [...record.windows]) {
       try { if (!win.isDestroyed()) win.destroy(); } catch (e) { /* 忽略 */ }

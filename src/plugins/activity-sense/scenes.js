@@ -40,8 +40,41 @@ function parseAnimList(text) {
     .filter(Boolean);
 }
 
+/**
+ * 自定义规则（设置里的表格，JSON 字符串）→ [{ name, apps, keywords, anims }]
+ * 没填名字或程序名 / 关键词都没填的规则会被忽略
+ */
+function parseRules(text) {
+  let rows = text;
+  if (typeof rows === 'string') {
+    try { rows = JSON.parse(rows || '[]'); } catch (e) { rows = []; }
+  }
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => ({
+    name: String((row && row.name) || '').trim(),
+    apps: parseList(row && row.apps),
+    keywords: parseList(row && row.keywords),
+    anims: parseAnimList(row && row.anims)
+  })).filter((rule) => rule.name && (rule.apps.length || rule.keywords.length));
+}
+
+/** custom:<序号> → 对应的自定义规则 */
+function customRuleOf(sceneId, settings) {
+  const m = /^custom:(\d+)$/.exec(String(sceneId || ''));
+  return m ? parseRules(settings && settings.customRules)[Number(m[1])] || null : null;
+}
+
+/** 场景的显示名 */
+function sceneLabel(sceneId, settings) {
+  const rule = customRuleOf(sceneId, settings);
+  if (rule) return rule.name;
+  return SCENES[sceneId] ? SCENES[sceneId].label : '普通闲置';
+}
+
 /** 某个场景实际使用的动画：设置里填了就用设置的，留空用默认 */
 function sceneAnims(sceneId, settings) {
+  const rule = customRuleOf(sceneId, settings);
+  if (rule) return rule.anims;
   const custom = parseAnimList(settings && settings[`${sceneId}Anims`]);
   if (custom.length > 0) return custom;
   return SCENES[sceneId] ? SCENES[sceneId].loop : [];
@@ -81,13 +114,21 @@ function detectScene(sample, idleSeconds, settings) {
 
   const name = String((sample && sample.process) || '').toLowerCase();
   const matches = (key) => !!name && listOf(key).includes(name);
+  const title = String((sample && sample.title) || '').toLowerCase();
+
+  // 自定义规则优先于内置场景（从上到下第一条命中的生效）；标题关键词只在开启读取标题后生效
+  const rules = parseRules(settings.customRules);
+  for (let i = 0; i < rules.length; i++) {
+    const rule = rules[i];
+    if (name && rule.apps.includes(name)) return `custom:${i}`;
+    if (settings.readTitles && title && rule.keywords.some((k) => title.includes(k))) return `custom:${i}`;
+  }
 
   // 打游戏、看视频是「全神贯注」的场景，优先于后台音乐
   if (matches('game')) return 'game';
   if (matches('video')) return 'video';
   // 浏览器：只有用户开启了读取标题，才会按标题关键词判断是不是在看视频
   if (name && settings.readTitles && BROWSERS.some((b) => b.toLowerCase() === name)) {
-    const title = String((sample && sample.title) || '').toLowerCase();
     const keywords = parseList(settings.videoKeywords != null ? settings.videoKeywords : DEFAULT_VIDEO_KEYWORDS);
     if (title && keywords.some((k) => title.includes(k))) return 'video';
   }
@@ -146,6 +187,8 @@ module.exports = {
   SCENES,
   DEFAULT_WAKE_ANIM,
   parseAnimList,
+  parseRules,
+  sceneLabel,
   sceneAnims,
   DEFAULT_APPS,
   DEFAULT_VIDEO_KEYWORDS,

@@ -318,6 +318,32 @@ await checkAsync('本地服务离线时发送消息走错误事件', async () =>
   assert(/连接不到本地模型服务/.test(errorEvent.payload.error || ''), `错误文案未提示服务离线: ${errorEvent.payload.error}`);
 });
 
+await checkAsync('插件消息总线：跨插件发布 / 订阅 / latest，不回送给自己，卸载后退订', async () => {
+  const os = require('os');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'deskpet-bus-'));
+  const write = (id, code) => {
+    fs.mkdirSync(path.join(tmp, id));
+    fs.writeFileSync(path.join(tmp, id, 'plugin.json'), JSON.stringify({ id, name: id, version: '1.0.0', description: id, main: 'main.js' }));
+    fs.writeFileSync(path.join(tmp, id, 'main.js'), code);
+  };
+  write('pub', `module.exports = { activate(ctx) { global.__pubCtx = ctx; ctx.bus.subscribe('t', () => { global.__selfHit = true; }); } };`);
+  write('sub', `module.exports = { activate(ctx) { ctx.bus.subscribe('t', (d, meta) => { global.__got = [d, meta.from]; }); } };`);
+  const busHost = createPluginManager({ electron: createFakeElectron(), logger: { log() {}, warn() {} }, storeFactory: createMemoryStoreFactory(), pluginsDir: tmp, hostServices: {} });
+  try {
+    await busHost.loadAll();
+    const delivered = global.__pubCtx.bus.publish('t', { n: 1 });
+    assertEqual(delivered, 1, '应送达 1 个订阅者（不含自己）');
+    assertEqual(JSON.stringify(global.__got), '[{"n":1},"pub"]', '订阅者收到数据与来源');
+    assertEqual(global.__selfHit, undefined, '不应回送给发布者自己');
+    assertEqual(global.__pubCtx.bus.latest('t').n, 1, 'latest');
+    assertEqual(global.__pubCtx.bus.latest('nope'), null, '未发布的 topic');
+    await busHost.deactivateAll();
+  } finally {
+    delete global.__pubCtx; delete global.__got; delete global.__selfHit;
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 check('未注册命令返回失败而不是抛异常', async () => {
   const result = await host.runCommand('llm-chat', '不存在的命令', {});
   assertEqual(result.success, true, '未知命令应由插件自行忽略');
@@ -480,6 +506,20 @@ check('行为感知：按程序名 / 空闲时间 / 标题判定场景', () => {
   assertEqual(sceneAnims('coding', {}).join('|'), '写代码|工作状态-忙碌点按', '默认动画');
   assertEqual(sceneAnims('coding', { codingAnims: ' 撸猫.webm，悠闲哼歌 ' }).join('|'), '撸猫|悠闲哼歌', '自定义动画（中英文逗号、去 .webm）');
   assertEqual(sceneAnims('coding', { codingAnims: '' }).join('|'), '写代码|工作状态-忙碌点按', '留空回退默认');
+  const { sceneLabel } = require('../src/plugins/activity-sense/scenes');
+  const rules = JSON.stringify([
+    { name: '画画', apps: 'Photoshop, krita', keywords: '', anims: '凭空生花, 撸猫' },
+    { name: '刷题', apps: '', keywords: 'leetcode, 力扣', anims: '深度思考碎碎念' },
+    { name: '', apps: 'Code', keywords: '', anims: '撸猫' }
+  ]);
+  const withRules = { ...base, customRules: rules };
+  assertEqual(detectScene({ process: 'krita', title: '' }, 3, withRules), 'custom:0', '自定义程序名');
+  assertEqual(sceneLabel('custom:0', withRules), '画画', '自定义场景名');
+  assertEqual(sceneAnims('custom:0', withRules).join('|'), '凭空生花|撸猫', '自定义场景动画');
+  assertEqual(detectScene({ process: 'chrome', title: '两数之和 - 力扣' }, 3, withRules), null, '未开启读标题时关键词不生效');
+  assertEqual(detectScene({ process: 'chrome', title: '两数之和 - 力扣' }, 3, { ...withRules, readTitles: true }), 'custom:1', '标题关键词');
+  assertEqual(detectScene({ process: 'Code', title: '' }, 3, withRules), 'coding', '没填名字的规则被忽略');
+  assertEqual(detectScene({ process: 'krita', title: '' }, 400, withRules), 'sleep', '离开优先于自定义规则');
   assertEqual(isSelf('electron'), true, '自身窗口');
   assertEqual(festivalAt(new Date(2026, 8, 25)).id, 'mid-autumn', '2026 中秋');
   assertEqual(festivalAt(new Date(2026, 9, 15)), null, '普通日子');

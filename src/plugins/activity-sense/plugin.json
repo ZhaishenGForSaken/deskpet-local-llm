@@ -54,6 +54,37 @@
           "hint": "新场景要持续这么久才切换，避免频繁切窗口时动画跟着乱跳"
         },
         {
+          "key": "sceneMode",
+          "label": "场景动画频率",
+          "type": "select",
+          "default": "ambient",
+          "options": [
+            {
+              "value": "quiet",
+              "label": "安静：只在进入场景时播一次"
+            },
+            {
+              "value": "ambient",
+              "label": "适中：平时待机，偶尔播场景动画（推荐）"
+            },
+            {
+              "value": "continuous",
+              "label": "持续：一直循环场景动画"
+            }
+          ],
+          "hint": "「适中」时场景动画代替动作动画，出现间隔跟随「动画素材 → 播放节奏」；发呆 / 睡着始终持续播放"
+        },
+        {
+          "key": "longSessionMinutes",
+          "label": "久坐提醒（分钟）",
+          "type": "number",
+          "default": 90,
+          "min": 0,
+          "max": 600,
+          "step": 5,
+          "hint": "写代码 / 学习 / 打游戏 / 自定义场景连续这么久，桌宠提醒你休息（由本地模型生成提醒语，模型不可用时用内置文案）；0 表示关闭"
+        },
+        {
           "key": "mealReminders",
           "label": "吃饭提醒",
           "type": "boolean",
@@ -130,6 +161,39 @@
           "default": "打瞌睡被惊醒",
           "hint": "从睡着状态回来时播放一次（单选）",
           "single": true
+        },
+        {
+          "key": "customRules",
+          "label": "自定义场景规则",
+          "type": "table",
+          "default": "[]",
+          "addLabel": "＋ 添加规则",
+          "columns": [
+            {
+              "key": "name",
+              "label": "场景名",
+              "type": "text",
+              "placeholder": "例如：画画"
+            },
+            {
+              "key": "apps",
+              "label": "程序名（逗号分隔，不带 .exe）",
+              "type": "text",
+              "placeholder": "例如：Photoshop, krita"
+            },
+            {
+              "key": "keywords",
+              "label": "窗口标题关键词（需开启「读取窗口标题」）",
+              "type": "text",
+              "placeholder": "例如：LeetCode, 力扣"
+            },
+            {
+              "key": "anims",
+              "label": "播放的动画",
+              "type": "animations"
+            }
+          ],
+          "hint": "自定义规则优先于内置场景，从上到下第一条命中的生效；可用 ↑↓ 调整优先级"
         },
         {
           "key": "codingApps",

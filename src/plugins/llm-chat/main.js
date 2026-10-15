@@ -87,6 +87,7 @@ function buildConfig(ctx, override) {
     petReact: merged.petReact !== false,
     syncReply: merged.syncReply !== false,
     systemPrompt,
+    chatterUseScene: merged.chatterUseScene !== false,
     chatterMinutes: Number(merged.chatterMinutes) || 0,
     chatterPrompt: String(merged.chatterPrompt || '').trim() || DEFAULT_CHATTER_PROMPT
   };
@@ -361,6 +362,13 @@ module.exports = {
 
     startChatterTimer(ctx);
 
+    // ---------- 行为感知（另一个插件）发来的久坐提醒：用本地模型说一句 ----------
+    if (ctx.bus) {
+      ctx.bus.subscribe('activity.milestone', (data) => {
+        handleMilestone(ctx, data).catch(() => { /* 已在内部兜底 */ });
+      });
+    }
+
     // ---------- 卸载清理 ----------
     ctx.onDeactivate(() => {
       cancelAllPending();
@@ -488,6 +496,47 @@ function startChatterTimer(ctx) {
   }, minutes * 60 * 1000);
 }
 
+/** 「已持续 N 分钟」的口语化描述 */
+function durationText(minutes) {
+  if (minutes < 60) return `${minutes} 分钟`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
+}
+
+/**
+ * 给闲聊模型的场景描述：只用行为感知插件发布的场景名与持续时间（不含程序名 / 窗口标题）
+ * 行为感知插件不存在或关闭时返回空字符串
+ */
+function sceneContext(ctx, config) {
+  if (!config.chatterUseScene || !ctx.bus) return '';
+  const scene = ctx.bus.latest('activity.scene');
+  if (!scene || !scene.scene || !scene.label) return '';
+  const minutes = Math.max(0, Math.floor((Date.now() - Number(scene.since || Date.now())) / 60000));
+  return `主人现在的状态：${scene.label}（已持续 ${durationText(minutes)}）。`;
+}
+
+/** 久坐提醒：让模型生成一句提醒；模型不可用或关闭了结合场景时用内置文案 */
+async function handleMilestone(ctx, data) {
+  const label = String((data && data.label) || '专注');
+  const minutes = Number(data && data.minutes) || 0;
+  const fallback = `已经「${label}」${durationText(minutes)}了，起来活动一下、喝口水吧 🧘`;
+  const config = buildConfig(ctx);
+  if (!config.chatterUseScene) {
+    const fn = ctx.host && ctx.host.showPetBubble;
+    if (typeof fn === 'function') fn({ text: fallback, duration: 7000 });
+    return;
+  }
+  const result = await petTalk(ctx, {
+    manual: false,
+    instruction: `主人已经连续「${label}」${durationText(minutes)}了。请用一句不超过 30 个字的中文，俏皮又温暖地提醒主人休息一下（喝水、起身活动、看看远处等），只输出这句话本身。`
+  });
+  if (!result.success) {
+    const fn = ctx.host && ctx.host.showPetBubble;
+    if (typeof fn === 'function') fn({ text: fallback, duration: 7000 });
+  }
+}
+
 /** 把模型输出整理成适合气泡展示的一句话 */
 function tidyChatter(text) {
   const line = String(text || '')
@@ -500,7 +549,8 @@ function tidyChatter(text) {
 /**
  * 让桌宠说一句话
  * @param {Object} ctx
- * @param {{ manual?: boolean, override?: Object }} options manual 为 true 时失败也会用气泡提示
+ * @param {{ manual?: boolean, override?: Object, instruction?: string }} options
+ *   manual 为 true 时失败也会用气泡提示；instruction 为这次额外的要求（例如久坐提醒）
  * @returns {Promise<{ success: boolean, text?: string, error?: string }>}
  */
 async function petTalk(ctx, options = {}) {
@@ -517,7 +567,14 @@ async function petTalk(ctx, options = {}) {
     // 推理模型会先输出很长的思考过程，给足 token 余量
     const handle = requestChat({ ...config, maxTokens: 1024, temperature: 0.9 }, [
       { role: 'system', content: config.chatterPrompt },
-      { role: 'user', content: `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false })}，说一句吧。` }
+      {
+        role: 'user',
+        content: (() => {
+          const context = sceneContext(ctx, config);
+          return `现在是 ${new Date().toLocaleString('zh-CN', { hour12: false })}。${context}` +
+            (options.instruction || (context ? '说一句吧，可以结合主人现在的状态。' : '说一句吧。'));
+        })()
+      }
     ], { stream: false });
     pending.set('pet-talk', handle);
     const result = await handle.promise;
