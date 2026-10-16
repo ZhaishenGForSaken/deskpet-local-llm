@@ -1,6 +1,6 @@
 {
   "name": "deskpet-local",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "连接本地大模型（Ollama / LM Studio / llama.cpp / vLLM）、会感知你在做什么的桌面宠物，基于 isKage/desk-llm-pet 改造",
   "keywords": [
     "desktop-pet",

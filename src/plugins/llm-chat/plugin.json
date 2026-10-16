@@ -1,7 +1,7 @@
 {
   "id": "llm-chat",
   "name": "AI 对话",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "连接本地部署的大模型（Ollama / LM Studio / llama.cpp / vLLM 等 OpenAI 兼容服务）：多会话、桌面小对话窗、流式回复、思考过程展示、桌宠闲聊，历史仅保存在本地。",
   "author": "isKage",
   "main": "main.js",

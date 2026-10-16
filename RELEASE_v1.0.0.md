@@ -1,4 +1,4 @@
-# DeskPet v2.0.0：本地大模型桌宠
+# DeskPet v1.0.0：本地大模型桌宠
 
 > 基于 [isKage/desk-llm-pet](https://github.com/isKage/desk-llm-pet) v1.1.0（MIT）改造的第一个版本
 
@@ -35,7 +35,7 @@
 
 | 平台 | 文件 |
 |---|---|
-| 🪟 Windows x64 | `DeskPet.Setup.2.0.0.exe` |
+| 🪟 Windows x64 | `DeskPet.Setup.1.0.0.exe` |
 
 macOS 版本请从源码打包（`npm run build:mac`）。
 
