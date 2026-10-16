@@ -83,7 +83,7 @@ npm run dev
 
 ## 🎬 动画素材
 
-动画素材不随仓库分发，没有 `.webm` 时会使用内置的 Canvas 占位动画。把 WebM（支持透明通道）放进 `assets/animations/idle/`（闲置）和 `assets/animations/click/`（点击反应），再到「设置 → 动画素材」里勾选即可。原作者使用的素材来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)。
+仓库自带的 WebM 动画来自 [dsh-pet](https://github.com/PC2005-cloud/dsh-pet)（MIT，许可见 `assets/animations/LICENSE-dsh-pet.txt`），分为 `idle/`（闲置）、`click/`（点击反应）和 `scene/`（场景动画）。也可以把自己的 WebM（支持透明通道）放进对应文件夹，再到「设置 → 动画素材」里勾选；没有 `.webm` 时会使用内置的 Canvas 占位动画。
 
 ## 📦 打包
 
