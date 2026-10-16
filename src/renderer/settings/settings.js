@@ -265,7 +265,7 @@ function setupEventListeners() {
   if (githubLink) {
     githubLink.addEventListener('click', (e) => {
       e.preventDefault();
-      window.settingsAPI.openExternal?.('https://github.com/isKage/desk-llm-pet');
+      window.settingsAPI.openExternal?.('https://github.com/ZhaishenGForSaken/deskpet-local-llm');
     });
   }
 

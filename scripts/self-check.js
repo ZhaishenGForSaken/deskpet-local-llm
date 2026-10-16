@@ -604,9 +604,8 @@ check('发布信息一致：版本号 / 发布说明文件 / 安装包名对得�
   assert(fs.existsSync(path.join(ROOT, notesRel)), `缺少发布说明文件 ${notesRel}`);
   const notes = readFile(notesRel);
   assert(notes.includes(`v${pkg.version}`), `${notesRel} 里没有出现 v${pkg.version}`);
+  // 目前只发布 Windows 安装包；macOS 需自行打包
   for (const asset of [
-    `DeskPet-${pkg.version}-arm64.dmg`,
-    `DeskPet-${pkg.version}.dmg`,
     `DeskPet.Setup.${pkg.version}.exe`
   ]) {
     assert(notes.includes(asset), `${notesRel} 未提到安装包 ${asset}`);

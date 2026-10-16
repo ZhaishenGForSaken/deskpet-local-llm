@@ -1,18 +1,30 @@
 {
   "name": "deskpet-local",
   "version": "2.0.0",
-  "description": "连接本地部署大模型（Ollama / LM Studio / llama.cpp / vLLM）的桌面宠物，基于 isKage/desk-llm-pet 改造",
+  "description": "连接本地大模型（Ollama / LM Studio / llama.cpp / vLLM）、会感知你在做什么的桌面宠物，基于 isKage/desk-llm-pet 改造",
+  "keywords": [
+    "desktop-pet",
+    "electron",
+    "ollama",
+    "local-llm",
+    "lm-studio",
+    "llama-cpp",
+    "chatbot"
+  ],
   "main": "src/main/main.js",
-  "author": "isKage",
+  "author": "ZhaishenGForSaken",
+  "contributors": [
+    "isKage (https://github.com/isKage/desk-llm-pet)"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/isKage/desk-llm-pet"
+    "url": "https://github.com/ZhaishenGForSaken/deskpet-local-llm.git"
   },
   "bugs": {
-    "url": "https://github.com/isKage/desk-llm-pet/issues"
+    "url": "https://github.com/ZhaishenGForSaken/deskpet-local-llm/issues"
   },
-  "homepage": "https://github.com/isKage/desk-llm-pet#readme",
+  "homepage": "https://github.com/ZhaishenGForSaken/deskpet-local-llm#readme",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
@@ -34,7 +46,7 @@
   "build": {
     "appId": "com.deskpet.localllm",
     "productName": "DeskPet",
-    "copyright": "MIT License - isKage",
+    "copyright": "MIT License - isKage, ZhaishenGForSaken",
     "directories": {
       "output": "dist"
     },

@@ -94,14 +94,13 @@ function buildMenu() {
           type: 'info',
           title: '关于 DeskPet',
           message: `DeskPet v${app.getVersion()}`,
-          detail: '一款连接本地部署大模型（Ollama / LM Studio / llama.cpp / vLLM 等）的桌面宠物应用。\n\n基于开源项目 desk-llm-pet 改造，Electron 构建，支持 Windows 和 macOS。\n\n🔗 原项目: https://github.com/isKage/desk-llm-pet',
-          buttons: ['确定', '访问原项目'],
+          detail: '一款连接本地部署大模型（Ollama / LM Studio / llama.cpp / vLLM 等）的桌面宠物应用。\n\n基于开源项目 desk-llm-pet 改造，Electron 构建，支持 Windows 和 macOS。\n\n🔗 项目主页: https://github.com/ZhaishenGForSaken/deskpet-local-llm\n🔗 原项目: https://github.com/isKage/desk-llm-pet',
+          buttons: ['确定', '项目主页', '原项目'],
           defaultId: 0,
           cancelId: 0
         }).then(({ response }) => {
-          if (response === 1) {
-            shell.openExternal('https://github.com/isKage/desk-llm-pet');
-          }
+          if (response === 1) shell.openExternal('https://github.com/ZhaishenGForSaken/deskpet-local-llm');
+          if (response === 2) shell.openExternal('https://github.com/isKage/desk-llm-pet');
         });
       }
     },
